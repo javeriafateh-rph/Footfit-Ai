@@ -12,20 +12,8 @@ APP_NAME = "SoleMate"
 st.set_page_config(page_title=APP_NAME, page_icon="👟", layout="centered")
 database.init_db()
 
-if "theme" not in st.session_state:
-    st.session_state.theme = "light"
-
-_top_l, _top_r = st.columns([5, 1])
-with _top_r:
-    theme_choice = st.selectbox(
-        "Theme", ["☀️ Light", "🌙 Dark"],
-        index=0 if st.session_state.theme == "light" else 1,
-        label_visibility="collapsed",
-    )
-st.session_state.theme = "dark" if "Dark" in theme_choice else "light"
-
-st.markdown(get_css(st.session_state.theme), unsafe_allow_html=True)
-TC = theme_colors(st.session_state.theme)
+st.markdown(get_css("light"), unsafe_allow_html=True)
+TC = theme_colors("light")
 
 st.markdown(
     f"""
