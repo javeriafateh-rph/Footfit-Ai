@@ -16,8 +16,34 @@ def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, acce
     <style>
     {FONT_IMPORT}
 
+    :root {{
+        --primary-color: {accent};
+        --background-color: {app_bg};
+        --secondary-background-color: {card_bg};
+        --text-color: {text};
+    }}
+
     .stApp {{ background-color: {app_bg}; }}
     html, body, [class*="css"]  {{ font-family: 'Inter', sans-serif; color: {text}; }}
+
+    /* Force native Streamlit widget text/labels to follow OUR theme choice,
+       regardless of what .streamlit/config.toml has baked in — this is what
+       was causing invisible text when the in-app toggle disagreed with the
+       static config file. */
+    .stApp, .stApp p, .stApp span, .stApp label, .stApp div,
+    [data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] p,
+    [data-testid="stWidgetLabel"] p, .stRadio label, .stSelectbox label,
+    .stCaption, .stCaption p, [data-testid="stCaptionContainer"] {{
+        color: {text} !important;
+    }}
+    .stRadio [data-baseweb="radio"] div:first-child {{
+        border-color: {subtext} !important;
+    }}
+    .stSelectbox > div > div, .stTextInput > div > div, .stNumberInput > div > div {{
+        background-color: {card_bg} !important;
+        color: {text} !important;
+        border-color: {card_border} !important;
+    }}
 
     .hero {{
         background-color: {bg};
@@ -170,3 +196,10 @@ DARK_CSS = _build_css(
 
 def get_css(theme: str) -> str:
     return DARK_CSS if theme == "dark" else LIGHT_CSS
+
+
+def theme_colors(theme: str) -> dict:
+    """For the few remaining spots in app.py using inline style= instead of CSS classes."""
+    if theme == "dark":
+        return {"accent": "#38BDF8", "subtext": "#94A3B8"}
+    return {"accent": "#0369A1", "subtext": "#6B7280"}
