@@ -5,209 +5,90 @@ import database
 import matching
 import vision
 import vto
-from styles import CSS, CATEGORY_PILL_CLASS
+from styles import get_css, CATEGORY_PILL_CLASS
 
-st.set_page_config(page_title="FootFit AI Pro", page_icon="👟", layout="centered")
-st.markdown(CSS, unsafe_allow_html=True)
+APP_NAME = "SoleMate AI"
+
+st.set_page_config(page_title=APP_NAME, page_icon="👟", layout="centered")
 database.init_db()
 
+if "theme" not in st.session_state:
+    st.session_state.theme = "light"
+
+_top_l, _top_r = st.columns([5, 1])
+with _top_r:
+    theme_choice = st.selectbox(
+        "Theme", ["☀️ Light", "🌙 Dark"],
+        index=0 if st.session_state.theme == "light" else 1,
+        label_visibility="collapsed",
+    )
+st.session_state.theme = "dark" if "Dark" in theme_choice else "light"
+
+st.markdown(get_css(st.session_state.theme), unsafe_allow_html=True)
+
 st.markdown(
-    """
+    f"""
     <div class="hero">
-        <div class="hero-title">👟 FootFit AI Pro</div>
-        <div class="hero-subtitle">Foot-shape aware shoe matching for everyday, sport, and comfort-focused footwear</div>
+        <div class="hero-title">👟 {APP_NAME}</div>
+        <div class="hero-subtitle">Find your fit. See it on you.</div>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-tab_scan, tab_browse = st.tabs(["📸 Scan & Match", "🔎 Browse Catalog"])
-
 TOE_SHAPE_OPTIONS = list(matching.TOE_SHAPE_TO_BOX.keys())
 
-# =====================================================================
-# TAB 1 — Guided scan-and-match flow
-# =====================================================================
-with tab_scan:
-    st.markdown('<span class="step-badge">1</span><span class="step-title">Shopping Region</span>', unsafe_allow_html=True)
-    selected_region = st.selectbox("Region", list(database.REGIONS.keys()), label_visibility="collapsed")
+# ---------------------------------------------------------------------
+# Wizard state
+# ---------------------------------------------------------------------
+if "step" not in st.session_state:
+    st.session_state.step = 1
+if "region" not in st.session_state:
+    st.session_state.region = list(database.REGIONS.keys())[0]
+if "category" not in st.session_state:
+    st.session_state.category = database.CATEGORIES[0]
+if "toe_shape" not in st.session_state:
+    st.session_state.toe_shape = TOE_SHAPE_OPTIONS[0]
+if "arch" not in st.session_state:
+    st.session_state.arch = "Not sure"
+if "width" not in st.session_state:
+    st.session_state.width = "Not sure"
 
-    st.divider()
-    st.markdown('<span class="step-badge">2</span><span class="step-title">What are you shopping for?</span>', unsafe_allow_html=True)
-    category = st.radio(
-        "Category", database.CATEGORIES, horizontal=True, label_visibility="collapsed",
-        captions=["Daily wear, work, casual", "Running, gym, training", "Orthopedic-friendly, extra support"],
-    )
-    if category == "Medical & Comfort":
-        st.caption("ℹ️ These are comfort- and support-oriented shoe designs, not medical devices. If you have foot pain, diabetes, or another condition, please see a podiatrist for personalized advice.")
+TOTAL_STEPS = 4
 
-    st.divider()
-    st.markdown('<span class="step-badge">3</span><span class="step-title">Optional: Photo Scan</span>', unsafe_allow_html=True)
-    st.markdown(
-        """
-        <div class="guide-box">
-        📸 <b>For a calibrated measurement:</b> place a standard ID / credit / debit card flat next to your foot,
-        top-down photo, plain background. No card handy? Enter your foot length manually below instead.
-        This step is optional — you can also just answer the questions in step 4 directly.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    uploaded_file = st.file_uploader("Upload foot photo:", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
 
-    detected_width_mm = detected_length_mm = None
-    suggested_width = None
-    if uploaded_file is not None:
-        use_manual = False
-        manual_length_cm = 25.0
-        with st.expander("No card in photo? Enter a known foot length instead"):
-            manual_length_cm = st.number_input("Foot length in cm (heel to longest toe)", 15.0, 35.0, 25.0, 0.1)
-            use_manual = st.checkbox("Use this manual length instead of card detection")
+def go_next():
+    st.session_state.step = min(st.session_state.step + 1, TOTAL_STEPS)
 
-        img = Image.open(uploaded_file)
-        st.image(img, caption="Analyzing...", width=240)
 
-        if use_manual:
-            px_per_mm, known_len = None, manual_length_cm * 10
-        else:
-            px_per_mm, known_len = vision.detect_reference_card(img), None
+def go_back():
+    st.session_state.step = max(st.session_state.step - 1, 1)
 
-        result = vision.analyze_foot_contour(img, px_per_mm=px_per_mm, known_length_mm=known_len)
-        detected_width_mm, detected_length_mm = result["width_mm"], result["length_mm"]
 
-        if result["calibrated"]:
-            st.markdown('<span class="accuracy-badge accuracy-calibrated">📏 Calibrated measurement</span>', unsafe_allow_html=True)
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Forefoot Width", f"{detected_width_mm} mm")
-            c2.metric("Foot Length", f"{detected_length_mm} mm")
-            approx_size = vision.mm_to_us_shoe_size(detected_length_mm)
-            c3.metric("Est. US Size", f"{approx_size}")
-            # rough width bucket suggestion from measured ratio, still just a suggestion
-            ratio = detected_width_mm / detected_length_mm if detected_length_mm else 0.35
-            if ratio > 0.42:
-                suggested_width = "Wide"
-            elif ratio > 0.38:
-                suggested_width = "Standard"
-            else:
-                suggested_width = "Narrow"
-            st.caption(f"Based on this photo, **{suggested_width}** width may be a good starting point below — adjust if it doesn't match how your shoes usually fit.")
-        else:
-            st.markdown('<span class="accuracy-badge accuracy-estimate">🔍 Shape estimate only — no calibration</span>', unsafe_allow_html=True)
+def go_to(n):
+    st.session_state.step = n
 
-    st.divider()
-    st.markdown('<span class="step-badge">4</span><span class="step-title">Your Foot Profile</span>', unsafe_allow_html=True)
 
-    with st.expander("🧭 Not sure about toe shape or arch type? Quick self-check tips"):
-        st.markdown(
-            "- **Toe shape:** Look straight down at your bare foot. Is your big toe clearly the longest "
-            "(*Egyptian*), is your second toe longest (*Greek*), or are your toes roughly even (*Roman/Square*)?\n"
-            "- **Arch type — the wet-footprint test:** Wet the sole of your foot and step onto a paper bag or "
-            "dark pavement. A footprint showing almost the whole sole suggests a **flat arch**. A footprint "
-            "showing only your heel, ball, and a thin outer strip suggests a **high arch**. Something in "
-            "between is a **neutral arch**."
-        )
+st.progress(st.session_state.step / TOTAL_STEPS)
+mode = st.radio("Mode", ["🧭 Guided (recommended)", "🔎 Browse everything"], horizontal=True, label_visibility="collapsed")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        toe_shape = st.selectbox("Toe shape", TOE_SHAPE_OPTIONS)
-        arch = st.selectbox("Arch type", database.ARCH_TYPES + ["Not sure"])
-    with col2:
-        width_default_index = database.WIDTHS.index(suggested_width) if suggested_width in database.WIDTHS else 1
-        width = st.selectbox("Foot width", database.WIDTHS + ["Not sure"], index=width_default_index)
-        st.caption("Width tip: if your usual sneakers feel tight across the widest part of your forefoot, try Wide or Extra Wide.")
-
-    st.divider()
-    st.markdown('<span class="step-badge">5</span><span class="step-title">Your Matches</span>', unsafe_allow_html=True)
-
-    all_in_category = database.all_shoes(category=category)
-    ranked = matching.rank_shoes(all_in_category, category, toe_shape, arch, width)
-
-    if not ranked:
-        st.info("No shoes in this category yet — try Browse Catalog, or check back as we add more.")
-    else:
-        pill_class = CATEGORY_PILL_CLASS.get(category, "pill-everyday")
-        for score, shoe in ranked:
-            price, url = database.price_and_url(shoe, selected_region)
-            st.markdown(
-                f"""
-                <div class="rec-card">
-                    <span class="category-pill {pill_class}">{shoe['category']}</span><br>
-                    <strong>👟 <a href="{url}" target="_blank" style="color:#38BDF8;text-decoration:underline;">{shoe['name']}</a></strong> — {price}
-                    <div class="match-bar-track"><div class="match-bar-fill" style="width:{score}%;"></div></div>
-                    <span class="match-pct">{score}% fit match</span><br>
-                    <span style="color:#CBD5E1;font-size:0.92rem;">
-                        <b>Toe box:</b> {shoe['toe_box_shape']} &nbsp;|&nbsp; <b>Arch:</b> {shoe['arch_support']} &nbsp;|&nbsp; <b>Width:</b> {shoe['width']}
-                    </span><br>
-                    <span style="color:#CBD5E1;font-size:0.9rem;">{shoe['feature']}</span><br>
-                    <a href="{url}" target="_blank" class="buy-btn">View Product ↗</a>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            with st.expander(f"👗 Try on {shoe['name']} — powered by YouCam AI Shoes API"):
-                tc1, tc2 = st.columns(2)
-                with tc1:
-                    selfie_file = st.file_uploader(
-                        "Your photo (face + legs/feet visible works best)",
-                        type=["jpg", "jpeg", "png"], key=f"selfie_{shoe['id']}",
-                    )
-                with tc2:
-                    shoe_photo_file = st.file_uploader(
-                        "Photo of this shoe (product shot or worn-on-foot)",
-                        type=["jpg", "jpeg", "png"], key=f"shoephoto_{shoe['id']}",
-                    )
-                gender = st.selectbox("Visualize as", ["female", "male"], key=f"gender_{shoe['id']}")
-                style_label = st.selectbox("Style", list(vto.STYLES.keys()), key=f"style_{shoe['id']}")
-                style = vto.STYLES[style_label]
-
-                if st.button("✨ Generate Try-On", key=f"tryon_btn_{shoe['id']}"):
-                    if not selfie_file or not shoe_photo_file:
-                        st.warning("Upload both your photo and a shoe photo first.")
-                    else:
-                        try:
-                            with st.spinner("Generating your try-on — this can take up to a minute..."):
-                                result_url = vto.run_tryon_from_uploads(
-                                    selfie_file.getvalue(), shoe_photo_file.getvalue(),
-                                    gender=gender, style=style,
-                                )
-                            st.image(result_url, caption=f"You, wearing {shoe['name']}")
-                        except Exception as e:
-                            st.error(f"Try-on failed: {e}")
-                            st.caption("Check that YOUCAM_API_KEY is set correctly in secrets, and that your API units haven't run out.")
-
-    st.markdown(
-        """
-        <div class="disclaimer">
-        FootFit AI provides general fit guidance based on self-reported and photo-estimated foot characteristics.
-        It is not a podiatric diagnosis and is not a substitute for professional medical advice. If you have foot pain,
-        diabetes, arthritis, or another condition affecting your feet, please consult a podiatrist or other qualified
-        healthcare provider before choosing footwear.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-# =====================================================================
-# TAB 2 — Browse / search the full catalog
-# =====================================================================
-with tab_browse:
-    st.subheader("Search the full catalog")
+if mode == "🔎 Browse everything":
+    # =================================================================
+    # Simple, single-screen browse — no wizard needed here
+    # =================================================================
+    st.subheader("Browse the catalog")
     col_a, col_b = st.columns([2, 1])
     with col_a:
-        query = st.text_input("Search by name or feature", placeholder="e.g. 'wide' or 'cushion'")
+        query = st.text_input("Search", placeholder="e.g. 'wide' or 'cushion'", label_visibility="collapsed")
     with col_b:
-        browse_region = st.selectbox("Region", list(database.REGIONS.keys()), key="browse_region")
+        browse_region = st.selectbox("Region", list(database.REGIONS.keys()), label_visibility="collapsed")
 
-    f1, f2, f3, f4 = st.columns(4)
-    with f1:
-        cat_filter = st.selectbox("Category", ["Any"] + database.CATEGORIES)
-    with f2:
-        arch_filter = st.selectbox("Arch", ["Any"] + database.ARCH_TYPES)
-    with f3:
-        width_filter = st.selectbox("Width", ["Any"] + database.WIDTHS)
-    with f4:
-        max_price = st.number_input("Max price (USD)", min_value=0, value=0, step=10, help="0 = no limit")
+    with st.expander("Filters"):
+        f1, f2, f3, f4 = st.columns(4)
+        cat_filter = f1.selectbox("Category", ["Any"] + database.CATEGORIES)
+        arch_filter = f2.selectbox("Arch", ["Any"] + database.ARCH_TYPES)
+        width_filter = f3.selectbox("Width", ["Any"] + database.WIDTHS)
+        max_price = f4.number_input("Max $", min_value=0, value=0, step=10)
 
     results = database.search_shoes(
         query,
@@ -216,8 +97,7 @@ with tab_browse:
         width=None if width_filter == "Any" else width_filter,
         max_price_usd=max_price if max_price > 0 else None,
     )
-    st.caption(f"{len(results)} shoe(s) found")
-
+    st.caption(f"{len(results)} shoe(s)")
     for shoe in results:
         price, url = database.price_and_url(shoe, browse_region)
         pill_class = CATEGORY_PILL_CLASS.get(shoe["category"], "pill-everyday")
@@ -226,10 +106,163 @@ with tab_browse:
             <div class="rec-card">
                 <span class="category-pill {pill_class}">{shoe['category']}</span><br>
                 <strong>👟 <a href="{url}" target="_blank" style="color:#38BDF8;text-decoration:underline;">{shoe['name']}</a></strong> — {price}<br>
-                <span style="color:#CBD5E1;font-size:0.92rem;">
-                    <b>Toe box:</b> {shoe['toe_box_shape']} &nbsp;|&nbsp; <b>Arch:</b> {shoe['arch_support']} &nbsp;|&nbsp; <b>Width:</b> {shoe['width']}
-                </span><br>
                 <span style="color:#CBD5E1;font-size:0.9rem;">{shoe['feature']}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+else:
+    # =================================================================
+    # Guided wizard — one decision per screen
+    # =================================================================
+
+    # ---- Step 1: What are you shopping for ----
+    if st.session_state.step == 1:
+        st.markdown("### What are you shopping for?")
+        category = st.radio(
+            "Category", database.CATEGORIES, label_visibility="collapsed",
+            captions=["Daily wear, work, casual", "Running, gym, training", "Extra support, orthopedic-friendly"],
+            index=database.CATEGORIES.index(st.session_state.category),
+        )
+        st.session_state.category = category
+        if category == "Medical & Comfort":
+            st.caption("ℹ️ Comfort- and support-oriented designs, not medical devices. See a podiatrist for a real foot condition.")
+        st.button("Next →", on_click=go_next, type="primary")
+
+    # ---- Step 2: Foot profile (with optional photo scan tucked away) ----
+    elif st.session_state.step == 2:
+        st.markdown("### Tell us about your foot")
+        st.caption("Best guess is fine — you can always adjust your matches later.")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.session_state.toe_shape = st.selectbox(
+                "Toe shape", TOE_SHAPE_OPTIONS,
+                index=TOE_SHAPE_OPTIONS.index(st.session_state.toe_shape),
+            )
+            st.session_state.arch = st.selectbox(
+                "Arch type", database.ARCH_TYPES + ["Not sure"],
+                index=(database.ARCH_TYPES + ["Not sure"]).index(st.session_state.arch),
+            )
+        with col2:
+            st.session_state.width = st.selectbox(
+                "Foot width", database.WIDTHS + ["Not sure"],
+                index=(database.WIDTHS + ["Not sure"]).index(st.session_state.width),
+            )
+
+        with st.expander("Not sure? Quick tips"):
+            st.markdown(
+                "- **Toe shape:** big toe longest = *Egyptian*, second toe longest = *Greek*, roughly even = *Roman/Square*.\n"
+                "- **Arch (wet-footprint test):** wet your foot, step on a paper bag. Whole sole visible = **flat**. "
+                "Only heel + ball + thin outer strip = **high**. In between = **neutral**.\n"
+                "- **Width:** if your usual sneakers feel tight across the widest part, try Wide."
+            )
+
+        with st.expander("📸 Have a photo? Get a calibrated measurement instead"):
+            st.caption("Place a standard ID/credit card next to your foot, top-down photo, plain background.")
+            uploaded_file = st.file_uploader("Upload foot photo", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
+            if uploaded_file is not None:
+                manual_length_cm = st.number_input("No card? Enter foot length in cm instead", 15.0, 35.0, 25.0, 0.1)
+                use_manual = st.checkbox("Use manual length instead of card detection")
+
+                img = Image.open(uploaded_file)
+                st.image(img, width=200)
+
+                if use_manual:
+                    px_per_mm, known_len = None, manual_length_cm * 10
+                else:
+                    px_per_mm, known_len = vision.detect_reference_card(img), None
+
+                result = vision.analyze_foot_contour(img, px_per_mm=px_per_mm, known_length_mm=known_len)
+
+                if result["calibrated"]:
+                    st.success(f"📏 Calibrated: {result['width_mm']}mm wide, {result['length_mm']}mm long")
+                    ratio = result["width_mm"] / result["length_mm"] if result["length_mm"] else 0.35
+                    suggested = "Wide" if ratio > 0.42 else ("Standard" if ratio > 0.38 else "Narrow")
+                    if st.button(f"Use suggested width: {suggested}"):
+                        st.session_state.width = suggested
+                        st.rerun()
+                else:
+                    st.warning("No card detected — showing shape only, not a real measurement.")
+
+        c1, c2 = st.columns(2)
+        c1.button("← Back", on_click=go_back)
+        c2.button("Next →", on_click=go_next, type="primary")
+
+    # ---- Step 3: Region (kept tiny, one dropdown) ----
+    elif st.session_state.step == 3:
+        st.markdown("### Where are you shopping?")
+        st.session_state.region = st.selectbox(
+            "Region", list(database.REGIONS.keys()), label_visibility="collapsed",
+            index=list(database.REGIONS.keys()).index(st.session_state.region),
+        )
+        c1, c2 = st.columns(2)
+        c1.button("← Back", on_click=go_back)
+        c2.button("Show my matches →", on_click=go_next, type="primary")
+
+    # ---- Step 4: Results ----
+    elif st.session_state.step == 4:
+        st.markdown("### Your matches")
+        st.button("← Adjust my answers", on_click=go_back)
+
+        all_in_category = database.all_shoes(category=st.session_state.category)
+        ranked = matching.rank_shoes(
+            all_in_category, st.session_state.category,
+            st.session_state.toe_shape, st.session_state.arch, st.session_state.width,
+        )
+
+        if not ranked:
+            st.info("No shoes in this category yet — try Browse everything above.")
+        else:
+            pill_class = CATEGORY_PILL_CLASS.get(st.session_state.category, "pill-everyday")
+            for score, shoe in ranked:
+                price, url = database.price_and_url(shoe, st.session_state.region)
+                st.markdown(
+                    f"""
+                    <div class="rec-card">
+                        <span class="category-pill {pill_class}">{shoe['category']}</span><br>
+                        <strong>👟 <a href="{url}" target="_blank" style="color:#38BDF8;text-decoration:underline;">{shoe['name']}</a></strong> — {price}
+                        <div class="match-bar-track"><div class="match-bar-fill" style="width:{score}%;"></div></div>
+                        <span class="match-pct">{score}% fit match</span><br>
+                        <span style="color:#CBD5E1;font-size:0.9rem;">{shoe['feature']}</span><br>
+                        <a href="{url}" target="_blank" class="buy-btn">View Product ↗</a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                with st.expander(f"✨ See it on you — {shoe['name']}"):
+                    tc1, tc2 = st.columns(2)
+                    with tc1:
+                        selfie_file = st.file_uploader("Your photo", type=["jpg", "jpeg", "png"], key=f"selfie_{shoe['id']}")
+                    with tc2:
+                        shoe_photo_file = st.file_uploader("Shoe photo", type=["jpg", "jpeg", "png"], key=f"shoephoto_{shoe['id']}")
+
+                    adv1, adv2 = st.columns(2)
+                    gender = adv1.selectbox("As", ["female", "male"], key=f"gender_{shoe['id']}")
+                    style_label = adv2.selectbox("Style", list(vto.STYLES.keys()), key=f"style_{shoe['id']}")
+                    style = vto.STYLES[style_label]
+
+                    if st.button("Generate", key=f"tryon_btn_{shoe['id']}", type="primary"):
+                        if not selfie_file or not shoe_photo_file:
+                            st.warning("Upload both photos first.")
+                        else:
+                            try:
+                                with st.spinner("Generating — up to a minute..."):
+                                    result_url = vto.run_tryon_from_uploads(
+                                        selfie_file.getvalue(), shoe_photo_file.getvalue(),
+                                        gender=gender, style=style,
+                                    )
+                                st.image(result_url, caption=f"You, wearing {shoe['name']}")
+                            except Exception as e:
+                                st.error(f"Try-on failed: {e}")
+
+        st.markdown(
+            """
+            <div class="disclaimer">
+            SoleMate AI provides general fit guidance, not a podiatric diagnosis. If you have foot pain, diabetes,
+            or another condition affecting your feet, please consult a podiatrist before choosing footwear.
             </div>
             """,
             unsafe_allow_html=True,
