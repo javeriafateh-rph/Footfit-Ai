@@ -7,7 +7,7 @@ import vision
 import vto
 from styles import get_css, theme_colors, CATEGORY_PILL_CLASS
 
-APP_NAME = "SoleMate AI"
+APP_NAME = "SoleMate"
 
 st.set_page_config(page_title=APP_NAME, page_icon="👟", layout="centered")
 database.init_db()
@@ -262,7 +262,7 @@ else:
         st.markdown(
             """
             <div class="disclaimer">
-            SoleMate AI provides general fit guidance, not a podiatric diagnosis. If you have foot pain, diabetes,
+            SoleMate provides general fit guidance, not a podiatric diagnosis. If you have foot pain, diabetes,
             or another condition affecting your feet, please consult a podiatrist before choosing footwear.
             </div>
             """,
