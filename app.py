@@ -5,7 +5,7 @@ import database
 import matching
 import vision
 import vto
-from styles import get_css, theme_colors, CATEGORY_PILL_CLASS
+from styles import get_css, theme_colors, CATEGORY_PILL_CLASS, CATEGORY_ICON
 
 APP_NAME = "SoleMate"
 
@@ -58,6 +58,13 @@ def go_to(n):
     st.session_state.step = n
 
 
+STEP_LABELS = {
+    1: "Step 1 of 4 · What you're shopping for",
+    2: "Step 2 of 4 · Your foot profile",
+    3: "Step 3 of 4 · Shopping region",
+    4: "Step 4 of 4 · Your matches",
+}
+
 st.progress(st.session_state.step / TOTAL_STEPS)
 mode = st.radio("Mode", ["🧭 Guided (recommended)", "🔎 Browse everything"], horizontal=True, label_visibility="collapsed")
 
@@ -90,11 +97,12 @@ if mode == "🔎 Browse everything":
     for shoe in results:
         price, url = database.price_and_url(shoe, browse_region)
         pill_class = CATEGORY_PILL_CLASS.get(shoe["category"], "pill-everyday")
+        icon = CATEGORY_ICON.get(shoe["category"], "👟")
         st.markdown(
             f"""
             <div class="rec-card">
                 <span class="category-pill {pill_class}">{shoe['category']}</span><br>
-                <strong>👟 <a href="{url}" target="_blank" style="color:{TC['accent']};text-decoration:underline;">{shoe['name']}</a></strong> — {price}<br>
+                <strong>{icon} <a href="{url}" target="_blank" style="color:{TC['accent']};text-decoration:underline;">{shoe['name']}</a></strong> — {price}<br>
                 <span style="color:{TC['subtext']};font-size:0.9rem;">{shoe['feature']}</span>
             </div>
             """,
@@ -108,6 +116,7 @@ else:
 
     # ---- Step 1: What are you shopping for ----
     if st.session_state.step == 1:
+        st.markdown(f'<div class="step-label">{STEP_LABELS[1]}</div>', unsafe_allow_html=True)
         st.markdown("### What are you shopping for?")
         category = st.radio(
             "Category", database.CATEGORIES, label_visibility="collapsed",
@@ -121,6 +130,7 @@ else:
 
     # ---- Step 2: Foot profile (with optional photo scan tucked away) ----
     elif st.session_state.step == 2:
+        st.markdown(f'<div class="step-label">{STEP_LABELS[2]}</div>', unsafe_allow_html=True)
         st.markdown("### Tell us about your foot")
         st.caption("Best guess is fine — you can always adjust your matches later.")
 
@@ -181,6 +191,7 @@ else:
 
     # ---- Step 3: Region (kept tiny, one dropdown) ----
     elif st.session_state.step == 3:
+        st.markdown(f'<div class="step-label">{STEP_LABELS[3]}</div>', unsafe_allow_html=True)
         st.markdown("### Where are you shopping?")
         st.session_state.region = st.selectbox(
             "Region", list(database.REGIONS.keys()), label_visibility="collapsed",
@@ -192,7 +203,8 @@ else:
 
     # ---- Step 4: Results ----
     elif st.session_state.step == 4:
-        st.markdown("### Your matches")
+        st.markdown(f'<div class="step-label">{STEP_LABELS[4]}</div>', unsafe_allow_html=True)
+        st.markdown("### Nice! Here are your best matches")
         st.button("← Adjust my answers", on_click=go_back)
 
         all_in_category = database.all_shoes(category=st.session_state.category)
@@ -205,13 +217,17 @@ else:
             st.info("No shoes in this category yet — try Browse everything above.")
         else:
             pill_class = CATEGORY_PILL_CLASS.get(st.session_state.category, "pill-everyday")
-            for score, shoe in ranked:
+            icon = CATEGORY_ICON.get(st.session_state.category, "👟")
+            for i, (score, shoe) in enumerate(ranked):
                 price, url = database.price_and_url(shoe, st.session_state.region)
+                card_class = "rec-card top-match" if i == 0 else "rec-card"
+                badge_html = '<span class="best-match-badge">🏆 BEST MATCH</span><br>' if i == 0 else ""
                 st.markdown(
                     f"""
-                    <div class="rec-card">
+                    <div class="{card_class}">
+                        {badge_html}
                         <span class="category-pill {pill_class}">{shoe['category']}</span><br>
-                        <strong>👟 <a href="{url}" target="_blank" style="color:{TC['accent']};text-decoration:underline;">{shoe['name']}</a></strong> — {price}
+                        <strong>{icon} <a href="{url}" target="_blank" style="color:{TC['accent']};text-decoration:underline;">{shoe['name']}</a></strong> — {price}
                         <div class="match-bar-track"><div class="match-bar-fill" style="width:{score}%;"></div></div>
                         <span class="match-pct">{score}% fit match</span><br>
                         <span style="color:{TC['subtext']};font-size:0.9rem;">{shoe['feature']}</span><br>
