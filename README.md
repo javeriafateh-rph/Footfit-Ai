@@ -1,4 +1,4 @@
-# FootFit AI Pro
+# Solemate
 
 ## v3 update — categories, richer foot-shape matching, more regions
 
