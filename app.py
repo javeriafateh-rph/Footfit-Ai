@@ -158,7 +158,8 @@ with tab_scan:
                         type=["jpg", "jpeg", "png"], key=f"shoephoto_{shoe['id']}",
                     )
                 gender = st.selectbox("Visualize as", ["female", "male"], key=f"gender_{shoe['id']}")
-                style = st.selectbox("Style", vto.STYLES, key=f"style_{shoe['id']}")
+                style_label = st.selectbox("Style", list(vto.STYLES.keys()), key=f"style_{shoe['id']}")
+                style = vto.STYLES[style_label]
 
                 if st.button("✨ Generate Try-On", key=f"tryon_btn_{shoe['id']}"):
                     if not selfie_file or not shoe_photo_file:
