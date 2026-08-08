@@ -5,7 +5,7 @@ import database
 import matching
 import vision
 import vto
-from styles import get_css, CATEGORY_PILL_CLASS
+from styles import get_css, theme_colors, CATEGORY_PILL_CLASS
 
 APP_NAME = "SoleMate AI"
 
@@ -25,6 +25,7 @@ with _top_r:
 st.session_state.theme = "dark" if "Dark" in theme_choice else "light"
 
 st.markdown(get_css(st.session_state.theme), unsafe_allow_html=True)
+TC = theme_colors(st.session_state.theme)
 
 st.markdown(
     f"""
@@ -105,8 +106,8 @@ if mode == "🔎 Browse everything":
             f"""
             <div class="rec-card">
                 <span class="category-pill {pill_class}">{shoe['category']}</span><br>
-                <strong>👟 <a href="{url}" target="_blank" style="color:#38BDF8;text-decoration:underline;">{shoe['name']}</a></strong> — {price}<br>
-                <span style="color:#CBD5E1;font-size:0.9rem;">{shoe['feature']}</span>
+                <strong>👟 <a href="{url}" target="_blank" style="color:{TC['accent']};text-decoration:underline;">{shoe['name']}</a></strong> — {price}<br>
+                <span style="color:{TC['subtext']};font-size:0.9rem;">{shoe['feature']}</span>
             </div>
             """,
             unsafe_allow_html=True,
@@ -222,10 +223,10 @@ else:
                     f"""
                     <div class="rec-card">
                         <span class="category-pill {pill_class}">{shoe['category']}</span><br>
-                        <strong>👟 <a href="{url}" target="_blank" style="color:#38BDF8;text-decoration:underline;">{shoe['name']}</a></strong> — {price}
+                        <strong>👟 <a href="{url}" target="_blank" style="color:{TC['accent']};text-decoration:underline;">{shoe['name']}</a></strong> — {price}
                         <div class="match-bar-track"><div class="match-bar-fill" style="width:{score}%;"></div></div>
                         <span class="match-pct">{score}% fit match</span><br>
-                        <span style="color:#CBD5E1;font-size:0.9rem;">{shoe['feature']}</span><br>
+                        <span style="color:{TC['subtext']};font-size:0.9rem;">{shoe['feature']}</span><br>
                         <a href="{url}" target="_blank" class="buy-btn">View Product ↗</a>
                     </div>
                     """,
