@@ -45,7 +45,16 @@ import streamlit as st
 API_BASE = "https://yce-api-01.makeupar.com"
 FILE_ENDPOINT = f"{API_BASE}/s2s/v2.0/file/shoes"
 TASK_ENDPOINT = f"{API_BASE}/s2s/v2.0/task/shoes"
-STYLES = ["random", "style1", "style2", "style3", "style4", "style5"]  # confirm exact style names in API Playground before demo
+STYLES = {
+    "Random": "random",
+    "Minimal Style": "minimal",
+    "Boho Style": "boho",
+    "Country Style": "country",
+    "French Elegance": "french_elegance",
+    "Retro": "retro",
+}  # confirmed from Playground UI Aug 2026 — internal API values (right column) are best-guess
+   # from the display labels; if a call 400s on `style`, check the Playground's generated
+   # code snippet for the exact string it sends and correct the values here.
 
 
 def _api_key():
