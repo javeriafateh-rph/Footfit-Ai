@@ -6,6 +6,12 @@ CATEGORY_PILL_CLASS = {
     "Medical & Comfort": "pill-medical",
 }
 
+CATEGORY_ICON = {
+    "Everyday / Casual": "👞",
+    "Sports & Training": "🏃",
+    "Medical & Comfort": "🦶",
+}
+
 
 def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, accent_hover,
                 guide_bg, guide_border, pill_everyday_bg, pill_everyday_text,
@@ -107,6 +113,32 @@ def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, acce
     }}
     .rec-card:hover {{ border-color: {accent}; }}
     .rec-card strong {{ font-size: 1.15rem; color: {accent}; font-family: 'Poppins', sans-serif; }}
+
+    .rec-card.top-match {{
+        border: 2px solid {accent};
+        box-shadow: 0 4px 14px rgba(14,165,233,0.15);
+        position: relative;
+    }}
+    .best-match-badge {{
+        display: inline-block;
+        background-color: {accent};
+        color: #FFFFFF;
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 999px;
+        margin-bottom: 8px;
+        letter-spacing: 0.02em;
+    }}
+
+    .step-label {{
+        color: {subtext};
+        font-size: 0.85rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+    }}
 
     .match-bar-track {{
         background-color: {track_bg};
