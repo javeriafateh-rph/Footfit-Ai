@@ -22,10 +22,13 @@ other currencies for convenience; always confirm current price on the
 retailer's site before buying.
 """
 
+import re
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import quote_plus
+
+SHOE_IMAGES_DIR = Path(__file__).parent / "shoe_images"
 
 DB_PATH = Path(__file__).parent / "foofit.db"
 
@@ -261,3 +264,25 @@ def add_shoe(**fields):
                VALUES (:name, :category, :toe_box_shape, :arch_support, :width, :feature, :brand_url, :base_price_usd)""",
             fields,
         )
+
+
+def shoe_slug(name: str) -> str:
+    """Turn a shoe name into a filename-safe slug, e.g. 'Altra Provision 7' -> 'altra-provision-7'."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug
+
+
+def shoe_image_path(shoe: dict):
+    """
+    Return the local image path for a shoe if one has been added to
+    shoe_images/, else None. Naming convention: shoe_images/<slug>.jpg
+    (also checks .jpeg/.png). This is what lets the try-on flow use the
+    catalog photo automatically instead of asking the user to upload one —
+    add a file here (see shoe_images/README.md) to enable it per shoe.
+    """
+    slug = shoe_slug(shoe["name"])
+    for ext in (".jpg", ".jpeg", ".png"):
+        path = SHOE_IMAGES_DIR / f"{slug}{ext}"
+        if path.exists():
+            return path
+    return None
