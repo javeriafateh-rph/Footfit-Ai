@@ -48,6 +48,19 @@ CATEGORIES = ["Everyday / Casual", "Sports & Training", "Medical & Comfort"]
 TOE_BOX_SHAPES = ["Round", "Pointed", "Square", "Wide-Anatomical"]
 ARCH_TYPES = ["High Arch", "Flat Arch", "Neutral Arch"]
 WIDTHS = ["Narrow", "Standard", "Wide", "Extra Wide"]
+GENDERS = ["Men's", "Women's", "Unisex"]
+
+# Gender classifications below are general demo-level categorizations based
+# on how each model is typically marketed, not verified against every
+# manufacturer's current size-chart pages — most models are genuinely
+# unisex-available, with a handful marketed toward one gender specifically.
+_GENDER_OVERRIDES = {
+    "Skechers Arch Fit Sunny Bay": "Women's",
+    "Rothy's The Point": "Women's",
+    "Orthofeet Coral": "Women's",
+    "New Balance 928v3": "Men's",
+    "Dr. Comfort Ranger": "Men's",
+}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS shoes (
@@ -57,6 +70,7 @@ CREATE TABLE IF NOT EXISTS shoes (
     toe_box_shape TEXT NOT NULL,
     arch_support TEXT NOT NULL,
     width TEXT NOT NULL,
+    gender TEXT NOT NULL DEFAULT 'Unisex',
     feature TEXT NOT NULL,
     brand_url TEXT NOT NULL,
     base_price_usd REAL NOT NULL,
@@ -200,6 +214,12 @@ SEED_SHOES = [
          brand_url="https://www.asics.com", base_price_usd=165),
 ]
 
+# Backfill gender onto every seed shoe: use the override if this exact shoe
+# is in the list above, otherwise default to Unisex. Doing this here instead
+# of typing "gender=..." into all 26 dicts above avoids retyping every entry.
+for _s in SEED_SHOES:
+    _s["gender"] = _GENDER_OVERRIDES.get(_s["name"], "Unisex")
+
 
 @contextmanager
 def get_conn():
@@ -220,23 +240,34 @@ def init_db():
             for s in SEED_SHOES:
                 conn.execute(
                     """INSERT INTO shoes
-                       (name, category, toe_box_shape, arch_support, width, feature, brand_url, base_price_usd)
-                       VALUES (:name, :category, :toe_box_shape, :arch_support, :width, :feature, :brand_url, :base_price_usd)""",
+                       (name, category, toe_box_shape, arch_support, width, gender, feature, brand_url, base_price_usd)
+                       VALUES (:name, :category, :toe_box_shape, :arch_support, :width, :gender, :feature, :brand_url, :base_price_usd)""",
                     s,
                 )
 
 
-def all_shoes(category: str = None):
+def all_shoes(category: str = None, gender: str = None):
+    """
+    gender=None or "Unisex" -> no gender filtering (everything shown).
+    gender="Men's" or "Women's" -> shows that gender's shoes PLUS all
+    Unisex shoes, never excludes Unisex options.
+    """
     with get_conn() as conn:
+        sql = "SELECT * FROM shoes WHERE active = 1"
+        params = []
         if category:
-            rows = conn.execute("SELECT * FROM shoes WHERE active = 1 AND category = ? ORDER BY name", (category,)).fetchall()
-        else:
-            rows = conn.execute("SELECT * FROM shoes WHERE active = 1 ORDER BY name").fetchall()
+            sql += " AND category = ?"
+            params.append(category)
+        if gender and gender != "Unisex":
+            sql += " AND (gender = ? OR gender = 'Unisex')"
+            params.append(gender)
+        sql += " ORDER BY name"
+        rows = conn.execute(sql, params).fetchall()
         return [dict(r) for r in rows]
 
 
 def search_shoes(query: str = "", category: str = None, arch: str = None,
-                  width: str = None, max_price_usd: float = None):
+                  width: str = None, gender: str = None, max_price_usd: float = None):
     with get_conn() as conn:
         sql = "SELECT * FROM shoes WHERE active = 1 AND (name LIKE ? OR feature LIKE ?)"
         params = [f"%{query}%", f"%{query}%"]
@@ -249,6 +280,9 @@ def search_shoes(query: str = "", category: str = None, arch: str = None,
         if width:
             sql += " AND width = ?"
             params.append(width)
+        if gender and gender != "Unisex":
+            sql += " AND (gender = ? OR gender = 'Unisex')"
+            params.append(gender)
         rows = conn.execute(sql, params).fetchall()
     results = [dict(r) for r in rows]
     if max_price_usd is not None:
@@ -257,11 +291,12 @@ def search_shoes(query: str = "", category: str = None, arch: str = None,
 
 
 def add_shoe(**fields):
+    fields.setdefault("gender", "Unisex")
     with get_conn() as conn:
         conn.execute(
             """INSERT INTO shoes
-               (name, category, toe_box_shape, arch_support, width, feature, brand_url, base_price_usd)
-               VALUES (:name, :category, :toe_box_shape, :arch_support, :width, :feature, :brand_url, :base_price_usd)""",
+               (name, category, toe_box_shape, arch_support, width, gender, feature, brand_url, base_price_usd)
+               VALUES (:name, :category, :toe_box_shape, :arch_support, :width, :gender, :feature, :brand_url, :base_price_usd)""",
             fields,
         )
 
