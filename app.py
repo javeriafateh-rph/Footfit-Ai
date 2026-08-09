@@ -250,11 +250,16 @@ else:
                 )
 
                 with st.expander(f"✨ See it on you — {shoe['name']}"):
-                    tc1, tc2 = st.columns(2)
-                    with tc1:
+                    catalog_image_path = database.shoe_image_path(shoe)
+
+                    if catalog_image_path:
+                        st.image(str(catalog_image_path), width=140, caption=shoe['name'])
                         selfie_file = st.file_uploader("Your photo", type=["jpg", "jpeg", "png"], key=f"selfie_{shoe['id']}")
-                    with tc2:
-                        shoe_photo_file = st.file_uploader("Shoe photo", type=["jpg", "jpeg", "png"], key=f"shoephoto_{shoe['id']}")
+                    else:
+                        st.caption("No catalog photo for this shoe yet — upload one to try it on for now.")
+                        col_a, col_b = st.columns(2)
+                        selfie_file = col_a.file_uploader("Your photo", type=["jpg", "jpeg", "png"], key=f"selfie_{shoe['id']}")
+                        fallback_shoe_file = col_b.file_uploader("Shoe photo", type=["jpg", "jpeg", "png"], key=f"shoephoto_{shoe['id']}")
 
                     adv1, adv2 = st.columns(2)
                     gender = adv1.selectbox("As", ["female", "male"], key=f"gender_{shoe['id']}")
@@ -262,13 +267,19 @@ else:
                     style = vto.STYLES[style_label]
 
                     if st.button("Generate", key=f"tryon_btn_{shoe['id']}", type="primary"):
-                        if not selfie_file or not shoe_photo_file:
-                            st.warning("Upload both photos first.")
+                        shoe_bytes = None
+                        if catalog_image_path:
+                            shoe_bytes = catalog_image_path.read_bytes()
+                        elif fallback_shoe_file:
+                            shoe_bytes = fallback_shoe_file.getvalue()
+
+                        if not selfie_file or not shoe_bytes:
+                            st.warning("Upload your photo first" if catalog_image_path else "Upload both photos first.")
                         else:
                             try:
                                 with st.spinner("Generating — up to a minute..."):
                                     result_url = vto.run_tryon_from_uploads(
-                                        selfie_file.getvalue(), shoe_photo_file.getvalue(),
+                                        selfie_file.getvalue(), shoe_bytes,
                                         gender=gender, style=style,
                                     )
                                 st.image(result_url, caption=f"You, wearing {shoe['name']}")
