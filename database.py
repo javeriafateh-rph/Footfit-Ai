@@ -25,6 +25,7 @@ retailer's site before buying.
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import quote_plus
 
 DB_PATH = Path(__file__).parent / "foofit.db"
 
@@ -69,9 +70,18 @@ def _price_for(base_usd: float, region: str) -> str:
 
 
 def price_and_url(shoe: dict, region: str):
-    """Given a shoe row and a region name, return (display_price, url)."""
+    """
+    Given a shoe row and a region name, return (display_price, url).
+
+    The url is a shopping search link for the exact shoe name, not the
+    brand's homepage — a direct product-page link would need to be
+    manually verified per shoe (26 of them) and would go stale as SKUs
+    change, so a search link is the reliable choice: it always resolves
+    and reliably surfaces the actual product across retailers.
+    """
     price = _price_for(shoe["base_price_usd"], region)
-    return price, shoe["brand_url"]
+    search_url = f"https://www.google.com/search?tbm=shop&q={quote_plus(shoe['name'])}"
+    return price, search_url
 
 
 # ---- Seed catalog -------------------------------------------------------
