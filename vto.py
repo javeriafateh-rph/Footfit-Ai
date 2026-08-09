@@ -69,24 +69,25 @@ def upload_image(file_bytes: bytes, content_type: str = "image/jpeg") -> str:
     Uploads a local image (e.g. from st.file_uploader) to YouCam and returns
     a file_id usable as src_file_id / ref_file_id in a task request.
 
-    FIXED based on a real 400 error response from the live API:
-    {"status":400,"error":"files is required but wasn't included in your
-    request.","error_code":"InvalidParameters"} — this told us directly that
-    the endpoint wants the file sent immediately as multipart/form-data under
-    the field name "files", not a two-step "request a URL, then PUT" pattern.
+    FIXED based on two real error responses from the live API, in order:
+    1. JSON body -> 400 "files is required but wasn't included in your
+       request" (told us: don't send JSON metadata only, send the actual file)
+    2. multipart/form-data body -> 415 "Content-Type 'multipart/form-data...'
+       isn't supported" (told us: don't wrap it in multipart either)
+    Together these point to one remaining option: send the raw image bytes
+    directly as the request body, with a plain image Content-Type header.
 
-    The response field name for the returned identifier (file_id vs id, or
-    nested under a list) is still not confirmed against a real success
-    response — if this raises "Unexpected file-upload response", send that
-    error text back and I'll adjust the extraction logic to match exactly.
+    The response field name for the returned identifier is still not
+    confirmed against a real success response — if this raises "Unexpected
+    file-upload response", send that error text back and I'll adjust the
+    extraction logic to match exactly.
     """
     api_key = _api_key()
     if not api_key:
         raise RuntimeError("No YOUCAM_API_KEY found in st.secrets.")
 
-    headers = {"Authorization": f"Bearer {api_key}"}
-    files = {"files": ("image.jpg", file_bytes, content_type)}
-    resp = requests.post(FILE_ENDPOINT, headers=headers, files=files, timeout=60)
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": content_type}
+    resp = requests.post(FILE_ENDPOINT, headers=headers, data=file_bytes, timeout=60)
     if resp.status_code != 200:
         raise RuntimeError(f"File upload failed ({resp.status_code}): {resp.text}")
 
