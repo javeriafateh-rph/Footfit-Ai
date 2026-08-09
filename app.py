@@ -42,6 +42,8 @@ TOE_SHAPE_OPTIONS = list(matching.TOE_SHAPE_TO_BOX.keys())
 # ---------------------------------------------------------------------
 # Wizard state
 # ---------------------------------------------------------------------
+if "gender" not in st.session_state:
+    st.session_state.gender = "Unisex"
 if "step" not in st.session_state:
     st.session_state.step = 1
 if "region" not in st.session_state:
@@ -55,7 +57,7 @@ if "arch" not in st.session_state:
 if "width" not in st.session_state:
     st.session_state.width = "Not sure"
 
-TOTAL_STEPS = 4
+TOTAL_STEPS = 5
 
 
 def go_next():
@@ -70,11 +72,14 @@ def go_to(n):
     st.session_state.step = n
 
 
+GENDER_TO_VTO = {"Men's": "male", "Women's": "female", "Unisex": "female"}
+
 STEP_LABELS = {
-    1: "Step 1 of 4 · What you're shopping for",
-    2: "Step 2 of 4 · Your foot profile",
-    3: "Step 3 of 4 · Shopping region",
-    4: "Step 4 of 4 · Your matches",
+    1: "Step 1 of 5 · Who's this for",
+    2: "Step 2 of 5 · What you're shopping for",
+    3: "Step 3 of 5 · Your foot profile",
+    4: "Step 4 of 5 · Shopping region",
+    5: "Step 5 of 5 · Your matches",
 }
 
 st.progress(st.session_state.step / TOTAL_STEPS)
@@ -126,9 +131,21 @@ else:
     # Guided wizard — one decision per screen
     # =================================================================
 
-    # ---- Step 1: What are you shopping for ----
+    # ---- Step 1: Who's this for (gender) ----
     if st.session_state.step == 1:
         st.markdown(f'<div class="step-label">{STEP_LABELS[1]}</div>', unsafe_allow_html=True)
+        st.markdown("### Who's this for?")
+        st.caption("This tailors which shoes get suggested to you.")
+        gender = st.radio(
+            "Gender", database.GENDERS, label_visibility="collapsed", horizontal=True,
+            index=database.GENDERS.index(st.session_state.gender),
+        )
+        st.session_state.gender = gender
+        st.button("Next →", on_click=go_next, type="primary")
+
+    # ---- Step 2: What are you shopping for ----
+    elif st.session_state.step == 2:
+        st.markdown(f'<div class="step-label">{STEP_LABELS[2]}</div>', unsafe_allow_html=True)
         st.markdown("### What are you shopping for?")
         category = st.radio(
             "Category", database.CATEGORIES, label_visibility="collapsed",
@@ -138,11 +155,13 @@ else:
         st.session_state.category = category
         if category == "Medical & Comfort":
             st.caption("ℹ️ Comfort- and support-oriented designs, not medical devices. See a podiatrist for a real foot condition.")
-        st.button("Next →", on_click=go_next, type="primary")
+        c1, c2 = st.columns(2)
+        c1.button("← Back", on_click=go_back)
+        c2.button("Next →", on_click=go_next, type="primary")
 
-    # ---- Step 2: Foot profile (with optional photo scan tucked away) ----
-    elif st.session_state.step == 2:
-        st.markdown(f'<div class="step-label">{STEP_LABELS[2]}</div>', unsafe_allow_html=True)
+    # ---- Step 3: Foot profile (with optional photo scan tucked away) ----
+    elif st.session_state.step == 3:
+        st.markdown(f'<div class="step-label">{STEP_LABELS[3]}</div>', unsafe_allow_html=True)
         st.markdown("### Tell us about your foot")
         st.caption("Best guess is fine — you can always adjust your matches later.")
 
@@ -171,8 +190,22 @@ else:
             )
 
         with st.expander("📸 Have a photo? Get a calibrated measurement instead"):
-            st.caption("Place a standard ID/credit card next to your foot, top-down photo, plain background.")
-            uploaded_file = st.file_uploader("Upload foot photo", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
+            st.markdown(
+                "**How to get an accurate reading:**\n"
+                "1. Place a standard ID, credit, or debit card flat on the floor next to your bare foot\n"
+                "2. Hold your phone directly overhead (top-down, not at an angle)\n"
+                "3. Make sure your whole foot AND the whole card are visible in frame\n"
+                "4. Use a plain floor, and make sure lighting is even (no strong shadows across your foot)"
+            )
+            capture_mode = st.radio(
+                "How do you want to provide the photo?", ["📁 Upload a photo", "📷 Take a photo now"],
+                horizontal=True, label_visibility="collapsed", key="calib_capture_mode",
+            )
+            if capture_mode == "📷 Take a photo now":
+                uploaded_file = st.camera_input("Line up your foot + card, then capture", label_visibility="collapsed")
+            else:
+                uploaded_file = st.file_uploader("Upload foot photo", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
+
             if uploaded_file is not None:
                 manual_length_cm = st.number_input("No card? Enter foot length in cm instead", 15.0, 35.0, 25.0, 0.1)
                 use_manual = st.checkbox("Use manual length instead of card detection")
@@ -195,15 +228,15 @@ else:
                         st.session_state.width = suggested
                         st.rerun()
                 else:
-                    st.warning("No card detected — showing shape only, not a real measurement.")
+                    st.warning("No card detected in that photo — try recapturing with the card flatter and more visible, or enter your foot length manually above.")
 
         c1, c2 = st.columns(2)
         c1.button("← Back", on_click=go_back)
         c2.button("Next →", on_click=go_next, type="primary")
 
-    # ---- Step 3: Region (kept tiny, one dropdown) ----
-    elif st.session_state.step == 3:
-        st.markdown(f'<div class="step-label">{STEP_LABELS[3]}</div>', unsafe_allow_html=True)
+    # ---- Step 4: Region (kept tiny, one dropdown) ----
+    elif st.session_state.step == 4:
+        st.markdown(f'<div class="step-label">{STEP_LABELS[4]}</div>', unsafe_allow_html=True)
         st.markdown("### Where are you shopping?")
         st.session_state.region = st.selectbox(
             "Region", list(database.REGIONS.keys()), label_visibility="collapsed",
@@ -213,13 +246,13 @@ else:
         c1.button("← Back", on_click=go_back)
         c2.button("Show my matches →", on_click=go_next, type="primary")
 
-    # ---- Step 4: Results ----
-    elif st.session_state.step == 4:
-        st.markdown(f'<div class="step-label">{STEP_LABELS[4]}</div>', unsafe_allow_html=True)
+    # ---- Step 5: Results ----
+    elif st.session_state.step == 5:
+        st.markdown(f'<div class="step-label">{STEP_LABELS[5]}</div>', unsafe_allow_html=True)
         st.markdown("### Nice! Here are your best matches")
         st.button("← Adjust my answers", on_click=go_back)
 
-        all_in_category = database.all_shoes(category=st.session_state.category)
+        all_in_category = database.all_shoes(category=st.session_state.category, gender=st.session_state.gender)
         ranked = matching.rank_shoes(
             all_in_category, st.session_state.category,
             st.session_state.toe_shape, st.session_state.arch, st.session_state.width,
@@ -252,18 +285,33 @@ else:
                 with st.expander(f"✨ See it on you — {shoe['name']}"):
                     catalog_image_path = database.shoe_image_path(shoe)
 
+                    st.markdown(
+                        "**For the best result:** stand facing the camera, full body or at least legs "
+                        "and feet visible, plain background, good even lighting."
+                    )
+                    selfie_mode = st.radio(
+                        "How do you want to provide your photo?", ["📁 Upload a photo", "📷 Take a photo now"],
+                        horizontal=True, label_visibility="collapsed", key=f"selfie_mode_{shoe['id']}",
+                    )
+
                     if catalog_image_path:
                         st.image(str(catalog_image_path), width=140, caption=shoe['name'])
-                        selfie_file = st.file_uploader("Your photo", type=["jpg", "jpeg", "png"], key=f"selfie_{shoe['id']}")
+                        if selfie_mode == "📷 Take a photo now":
+                            selfie_file = st.camera_input("Stand back so your legs are in frame, then capture", label_visibility="collapsed", key=f"selfie_cam_{shoe['id']}")
+                        else:
+                            selfie_file = st.file_uploader("Your photo", type=["jpg", "jpeg", "png"], key=f"selfie_{shoe['id']}")
                     else:
                         st.caption("No catalog photo for this shoe yet — upload one to try it on for now.")
                         col_a, col_b = st.columns(2)
-                        selfie_file = col_a.file_uploader("Your photo", type=["jpg", "jpeg", "png"], key=f"selfie_{shoe['id']}")
+                        with col_a:
+                            if selfie_mode == "📷 Take a photo now":
+                                selfie_file = st.camera_input("Your photo", label_visibility="collapsed", key=f"selfie_cam_{shoe['id']}")
+                            else:
+                                selfie_file = st.file_uploader("Your photo", type=["jpg", "jpeg", "png"], key=f"selfie_{shoe['id']}")
                         fallback_shoe_file = col_b.file_uploader("Shoe photo", type=["jpg", "jpeg", "png"], key=f"shoephoto_{shoe['id']}")
 
-                    adv1, adv2 = st.columns(2)
-                    gender = adv1.selectbox("As", ["female", "male"], key=f"gender_{shoe['id']}")
-                    style_label = adv2.selectbox("Style", list(vto.STYLES.keys()), key=f"style_{shoe['id']}")
+                    gender = GENDER_TO_VTO.get(st.session_state.gender, "female")
+                    style_label = st.selectbox("Style", list(vto.STYLES.keys()), key=f"style_{shoe['id']}")
                     style = vto.STYLES[style_label]
 
                     if st.button("Generate", key=f"tryon_btn_{shoe['id']}", type="primary"):
