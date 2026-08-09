@@ -1,6 +1,18 @@
 import streamlit as st
 from PIL import Image
 
+
+def html_block(s: str) -> str:
+    """
+    Strip leading whitespace from every line before handing HTML to st.markdown.
+    Without this, deeply-nested f-strings (lots of Python indentation) get
+    enough leading spaces that the browser's markdown renderer treats them
+    as a preformatted code block instead of real HTML — which is exactly
+    what was happening to the shoe cards.
+    """
+    lines = s.strip("\n").split("\n")
+    return "\n".join(line.strip() for line in lines)
+
 import database
 import matching
 import vision
@@ -16,12 +28,12 @@ st.markdown(get_css("light"), unsafe_allow_html=True)
 TC = theme_colors("light")
 
 st.markdown(
-    f"""
+    html_block(f"""
     <div class="hero">
         <div class="hero-title">👟 {APP_NAME}</div>
         <div class="hero-subtitle">Find your fit. See it on you.</div>
     </div>
-    """,
+    """),
     unsafe_allow_html=True,
 )
 
@@ -99,13 +111,13 @@ if mode == "🔎 Browse everything":
         pill_class = CATEGORY_PILL_CLASS.get(shoe["category"], "pill-everyday")
         icon = CATEGORY_ICON.get(shoe["category"], "👟")
         st.markdown(
-            f"""
+            html_block(f"""
             <div class="rec-card">
                 <span class="category-pill {pill_class}">{shoe['category']}</span><br>
                 <strong>{icon} <a href="{url}" target="_blank" style="color:{TC['accent']};text-decoration:underline;">{shoe['name']}</a></strong> — {price}<br>
                 <span style="color:{TC['subtext']};font-size:0.9rem;">{shoe['feature']}</span>
             </div>
-            """,
+            """),
             unsafe_allow_html=True,
         )
 
@@ -223,7 +235,7 @@ else:
                 card_class = "rec-card top-match" if i == 0 else "rec-card"
                 badge_html = '<span class="best-match-badge">🏆 BEST MATCH</span><br>' if i == 0 else ""
                 st.markdown(
-                    f"""
+                    html_block(f"""
                     <div class="{card_class}">
                         {badge_html}
                         <span class="category-pill {pill_class}">{shoe['category']}</span><br>
@@ -233,7 +245,7 @@ else:
                         <span style="color:{TC['subtext']};font-size:0.9rem;">{shoe['feature']}</span><br>
                         <a href="{url}" target="_blank" class="buy-btn">View Product ↗</a>
                     </div>
-                    """,
+                    """),
                     unsafe_allow_html=True,
                 )
 
@@ -264,11 +276,11 @@ else:
                                 st.error(f"Try-on failed: {e}")
 
         st.markdown(
-            """
+            html_block("""
             <div class="disclaimer">
             SoleMate provides general fit guidance, not a podiatric diagnosis. If you have foot pain, diabetes,
             or another condition affecting your feet, please consult a podiatrist before choosing footwear.
             </div>
-            """,
+            """),
             unsafe_allow_html=True,
         )
