@@ -69,29 +69,34 @@ def upload_image(file_bytes: bytes, content_type: str = "image/jpeg") -> str:
     Uploads a local image (e.g. from st.file_uploader) to YouCam and returns
     a file_id usable as src_file_id / ref_file_id in a task request.
 
-    This follows the same request-upload-URL -> PUT pattern documented for
-    other YouCam endpoints (e.g. AI Face Swap's /s2s/v2.0/file/face-swap).
-    Verify field names against the API Playground for /file/shoes before
-    your demo — Perfect Corp's file-upload contract is consistent across
-    their APIs but hasn't been directly confirmed here for the shoes endpoint.
+    FIXED based on a real 400 error response from the live API:
+    {"status":400,"error":"files is required but wasn't included in your
+    request.","error_code":"InvalidParameters"} — this told us directly that
+    the endpoint wants the file sent immediately as multipart/form-data under
+    the field name "files", not a two-step "request a URL, then PUT" pattern.
+
+    The response field name for the returned identifier (file_id vs id, or
+    nested under a list) is still not confirmed against a real success
+    response — if this raises "Unexpected file-upload response", send that
+    error text back and I'll adjust the extraction logic to match exactly.
     """
     api_key = _api_key()
     if not api_key:
         raise RuntimeError("No YOUCAM_API_KEY found in st.secrets.")
 
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    resp = requests.post(FILE_ENDPOINT, headers=headers, json={"content_type": content_type}, timeout=30)
+    headers = {"Authorization": f"Bearer {api_key}"}
+    files = {"files": ("image.jpg", file_bytes, content_type)}
+    resp = requests.post(FILE_ENDPOINT, headers=headers, files=files, timeout=60)
     if resp.status_code != 200:
-        raise RuntimeError(f"File request failed ({resp.status_code}): {resp.text}")
-    data = resp.json().get("data", {})
-    file_id = data.get("file_id")
-    upload_url = data.get("url") or data.get("upload_url")
-    if not file_id or not upload_url:
-        raise RuntimeError(f"Unexpected file-upload response: {data}")
+        raise RuntimeError(f"File upload failed ({resp.status_code}): {resp.text}")
 
-    put_resp = requests.put(upload_url, data=file_bytes, headers={"Content-Type": content_type}, timeout=60)
-    if put_resp.status_code not in (200, 201, 204):
-        raise RuntimeError(f"File upload PUT failed ({put_resp.status_code}): {put_resp.text}")
+    data = resp.json().get("data", {})
+    file_id = data.get("file_id") or data.get("id")
+    if not file_id and isinstance(data.get("files"), list) and data["files"]:
+        first = data["files"][0]
+        file_id = first.get("file_id") or first.get("id")
+    if not file_id:
+        raise RuntimeError(f"Unexpected file-upload response, please share this: {data}")
 
     return file_id
 
