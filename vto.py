@@ -149,6 +149,37 @@ def upload_image(file_bytes: bytes, content_type: str = "image/jpeg") -> str:
     return file_id
 
 
+def _host_via_cloudinary(file_bytes: bytes) -> str:
+    """
+    Uploads to Cloudinary using an unsigned upload preset and returns a
+    direct image URL. This is the most reliable hosting option — Cloudinary
+    is built specifically for apps to upload images programmatically, and
+    unlike the free anonymous drop-file hosts below (which increasingly
+    block automated requests), it's designed for exactly this kind of use.
+
+    Needs two values in st.secrets: CLOUDINARY_CLOUD_NAME and
+    CLOUDINARY_UPLOAD_PRESET (the preset must have Signing Mode set to
+    "Unsigned" in Cloudinary's dashboard). Returns None (not an error) if
+    these aren't configured, so the rest of the fallback chain still works
+    without them.
+    """
+    try:
+        cloud_name = st.secrets["CLOUDINARY_CLOUD_NAME"]
+        upload_preset = st.secrets["CLOUDINARY_UPLOAD_PRESET"]
+    except Exception:
+        return None
+
+    resp = requests.post(
+        f"https://api.cloudinary.com/v1_1/{cloud_name}/image/upload",
+        data={"upload_preset": upload_preset},
+        files={"file": ("image.jpg", file_bytes, "image/jpeg")},
+        timeout=30,
+    )
+    if resp.status_code == 200:
+        return resp.json().get("secure_url")
+    return None
+
+
 def _verify_direct_image_url(url: str) -> bool:
     """Confirm a hosted URL actually serves raw image bytes (not an HTML preview page) before trusting it."""
     try:
@@ -217,7 +248,8 @@ def _host_temporarily(file_bytes: bytes) -> str:
         text = resp.text.strip()
         return text if resp.status_code == 200 and text.startswith("http") else None
 
-    for name, fn in [("tmpfiles.org", _tmpfiles), ("0x0.st", _0x0), ("catbox.moe", _catbox)]:
+    for name, fn in [("cloudinary", lambda: _host_via_cloudinary(file_bytes)),
+                      ("tmpfiles.org", _tmpfiles), ("0x0.st", _0x0), ("catbox.moe", _catbox)]:
         result = _try(name, fn)
         if result:
             return result
