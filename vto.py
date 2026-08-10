@@ -38,9 +38,15 @@ unverified — confirm those against the Playground too if your try-on
 requests fail specifically at the upload step rather than the poll step.
 """
 
+import io
 import time
 import requests
 import streamlit as st
+from PIL import Image
+
+MIN_DIMENSION = 512  # YouCam's documented minimum: 512x384px, long side ≤4096px
+MIN_LONG_SIDE = 512
+MAX_LONG_SIDE = 4096
 
 API_BASE = "https://yce-api-01.makeupar.com"
 FILE_ENDPOINT = f"{API_BASE}/s2s/v2.0/file/shoes"
@@ -64,6 +70,32 @@ def _api_key():
         return None
 
 
+def _ensure_min_size(file_bytes: bytes) -> bytes:
+    """
+    YouCam's documented requirement is min 512x384px, long side <=4096px.
+    A photo picked from a phone gallery or a small product thumbnail can
+    easily be smaller than that — and undersized images are a likely cause
+    of the API's 500 "Internal Server Error" (the request is well-formed,
+    but something in their image pipeline chokes on it). Upscale anything
+    too small, and downscale anything absurdly large, before it's sent.
+    """
+    img = Image.open(io.BytesIO(file_bytes))
+    img = img.convert("RGB")
+    w, h = img.size
+    long_side = max(w, h)
+
+    if long_side < MIN_LONG_SIDE:
+        scale = MIN_LONG_SIDE / long_side
+        img = img.resize((max(1, round(w * scale)), max(1, round(h * scale))))
+    elif long_side > MAX_LONG_SIDE:
+        scale = MAX_LONG_SIDE / long_side
+        img = img.resize((max(1, round(w * scale)), max(1, round(h * scale))))
+
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=92)
+    return out.getvalue()
+
+
 def upload_image(file_bytes: bytes, content_type: str = "image/jpeg") -> str:
     """
     Uploads a local image (e.g. from st.file_uploader) to YouCam and returns
@@ -85,6 +117,9 @@ def upload_image(file_bytes: bytes, content_type: str = "image/jpeg") -> str:
     api_key = _api_key()
     if not api_key:
         raise RuntimeError("No YOUCAM_API_KEY found in st.secrets.")
+
+    file_bytes = _ensure_min_size(file_bytes)
+    content_type = "image/jpeg"  # _ensure_min_size always re-encodes as JPEG
 
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": content_type}
     resp = requests.post(FILE_ENDPOINT, headers=headers, data=file_bytes, timeout=60)
