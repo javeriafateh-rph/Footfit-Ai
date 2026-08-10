@@ -72,7 +72,7 @@ def go_to(n):
     st.session_state.step = n
 
 
-GENDER_TO_VTO = {"Men's": "male", "Women's": "female", "Unisex": "female"}
+GENDER_TO_VTO = {"Man": "male", "Woman": "female", "Unisex": "female"}
 
 STEP_LABELS = {
     1: "Step 1 of 5 · Who's this for",
