@@ -98,28 +98,64 @@ def _ensure_min_size(file_bytes: bytes) -> bytes:
 
 def _host_temporarily(file_bytes: bytes) -> str:
     """
-    Uploads an image to catbox.moe (a free, no-signup-required file host) and
-    returns a public URL for it.
+    Uploads an image to a free, no-signup public file host and returns a
+    public URL for it, so YouCam's task/shoes endpoint (which we've
+    confirmed accepts src_file_url / ref_file_url as plain URLs) can use it.
 
-    Why this exists: we've now confirmed (from a real successful Playground
-    request) that YouCam's task/shoes endpoint accepts src_file_url /
-    ref_file_url as plain URLs — that part of the contract is solid. What we
-    never had a confirmed answer for is how to upload a LOCAL file (from
-    st.file_uploader) directly to YouCam itself; three different guesses at
-    that failed three different ways. Rather than keep guessing at YouCam's
-    upload contract, this sidesteps it entirely: host the local photo
-    somewhere public for a few minutes, then hand YouCam a URL — the one
-    format we know for certain works.
+    Tries multiple hosts in order and falls back automatically, because
+    some of these free services block requests from cloud-hosted servers
+    (like Streamlit Cloud) to prevent abuse — catbox.moe returned exactly
+    that ("412 Invalid uploader") on a real deployed test. Falling back to
+    a different host instead of hard-failing makes this much more reliable
+    without needing any API key or signup.
     """
-    resp = requests.post(
-        "https://catbox.moe/user/api.php",
-        data={"reqtype": "fileupload"},
-        files={"fileToUpload": ("image.jpg", file_bytes, "image/jpeg")},
-        timeout=60,
-    )
-    if resp.status_code != 200 or not resp.text.startswith("http"):
-        raise RuntimeError(f"Temporary image hosting failed: {resp.status_code} {resp.text}")
-    return resp.text.strip()
+    errors = []
+
+    # Attempt 1: tmpfiles.org
+    try:
+        resp = requests.post(
+            "https://tmpfiles.org/api/v1/upload",
+            files={"file": ("image.jpg", file_bytes, "image/jpeg")},
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            page_url = resp.json().get("data", {}).get("url", "")
+            if page_url:
+                # API returns a view page (tmpfiles.org/xxxx/name) — the
+                # direct download link needs "/dl/" inserted after the domain.
+                return page_url.replace("tmpfiles.org/", "tmpfiles.org/dl/", 1)
+        errors.append(f"tmpfiles.org: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        errors.append(f"tmpfiles.org: {e}")
+
+    # Attempt 2: 0x0.st
+    try:
+        resp = requests.post(
+            "https://0x0.st",
+            files={"file": ("image.jpg", file_bytes, "image/jpeg")},
+            timeout=30,
+        )
+        if resp.status_code == 200 and resp.text.strip().startswith("http"):
+            return resp.text.strip()
+        errors.append(f"0x0.st: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        errors.append(f"0x0.st: {e}")
+
+    # Attempt 3: catbox.moe (last, since we've seen it get blocked before)
+    try:
+        resp = requests.post(
+            "https://catbox.moe/user/api.php",
+            data={"reqtype": "fileupload"},
+            files={"fileToUpload": ("image.jpg", file_bytes, "image/jpeg")},
+            timeout=30,
+        )
+        if resp.status_code == 200 and resp.text.strip().startswith("http"):
+            return resp.text.strip()
+        errors.append(f"catbox.moe: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        errors.append(f"catbox.moe: {e}")
+
+    raise RuntimeError(f"All temporary image hosts failed: {' | '.join(errors)}")
 
 
 def start_tryon_task(src_file_id: str = None, ref_file_id: str = None,
