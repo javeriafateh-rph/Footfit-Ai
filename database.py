@@ -48,18 +48,18 @@ CATEGORIES = ["Everyday / Casual", "Sports & Training", "Medical & Comfort"]
 TOE_BOX_SHAPES = ["Round", "Pointed", "Square", "Wide-Anatomical"]
 ARCH_TYPES = ["High Arch", "Flat Arch", "Neutral Arch"]
 WIDTHS = ["Narrow", "Standard", "Wide", "Extra Wide"]
-GENDERS = ["Men's", "Women's", "Unisex"]
+GENDERS = ["Man", "Woman", "Unisex"]
 
 # Gender classifications below are general demo-level categorizations based
 # on how each model is typically marketed, not verified against every
 # manufacturer's current size-chart pages — most models are genuinely
 # unisex-available, with a handful marketed toward one gender specifically.
 _GENDER_OVERRIDES = {
-    "Skechers Arch Fit Sunny Bay": "Women's",
-    "Rothy's The Point": "Women's",
-    "Orthofeet Coral": "Women's",
-    "New Balance 928v3": "Men's",
-    "Dr. Comfort Ranger": "Men's",
+    "Skechers Arch Fit Sunny Bay": "Woman",
+    "Rothy's The Point": "Woman",
+    "Orthofeet Coral": "Woman",
+    "New Balance 928v3": "Man",
+    "Dr. Comfort Ranger": "Man",
 }
 
 SCHEMA = """
