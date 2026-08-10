@@ -96,45 +96,30 @@ def _ensure_min_size(file_bytes: bytes) -> bytes:
     return out.getvalue()
 
 
-def upload_image(file_bytes: bytes, content_type: str = "image/jpeg") -> str:
+def _host_temporarily(file_bytes: bytes) -> str:
     """
-    Uploads a local image (e.g. from st.file_uploader) to YouCam and returns
-    a file_id usable as src_file_id / ref_file_id in a task request.
+    Uploads an image to catbox.moe (a free, no-signup-required file host) and
+    returns a public URL for it.
 
-    FIXED based on two real error responses from the live API, in order:
-    1. JSON body -> 400 "files is required but wasn't included in your
-       request" (told us: don't send JSON metadata only, send the actual file)
-    2. multipart/form-data body -> 415 "Content-Type 'multipart/form-data...'
-       isn't supported" (told us: don't wrap it in multipart either)
-    Together these point to one remaining option: send the raw image bytes
-    directly as the request body, with a plain image Content-Type header.
-
-    The response field name for the returned identifier is still not
-    confirmed against a real success response — if this raises "Unexpected
-    file-upload response", send that error text back and I'll adjust the
-    extraction logic to match exactly.
+    Why this exists: we've now confirmed (from a real successful Playground
+    request) that YouCam's task/shoes endpoint accepts src_file_url /
+    ref_file_url as plain URLs — that part of the contract is solid. What we
+    never had a confirmed answer for is how to upload a LOCAL file (from
+    st.file_uploader) directly to YouCam itself; three different guesses at
+    that failed three different ways. Rather than keep guessing at YouCam's
+    upload contract, this sidesteps it entirely: host the local photo
+    somewhere public for a few minutes, then hand YouCam a URL — the one
+    format we know for certain works.
     """
-    api_key = _api_key()
-    if not api_key:
-        raise RuntimeError("No YOUCAM_API_KEY found in st.secrets.")
-
-    file_bytes = _ensure_min_size(file_bytes)
-    content_type = "image/jpeg"  # _ensure_min_size always re-encodes as JPEG
-
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": content_type}
-    resp = requests.post(FILE_ENDPOINT, headers=headers, data=file_bytes, timeout=60)
-    if resp.status_code != 200:
-        raise RuntimeError(f"File upload failed ({resp.status_code}): {resp.text}")
-
-    data = resp.json().get("data", {})
-    file_id = data.get("file_id") or data.get("id")
-    if not file_id and isinstance(data.get("files"), list) and data["files"]:
-        first = data["files"][0]
-        file_id = first.get("file_id") or first.get("id")
-    if not file_id:
-        raise RuntimeError(f"Unexpected file-upload response, please share this: {data}")
-
-    return file_id
+    resp = requests.post(
+        "https://catbox.moe/user/api.php",
+        data={"reqtype": "fileupload"},
+        files={"fileToUpload": ("image.jpg", file_bytes, "image/jpeg")},
+        timeout=60,
+    )
+    if resp.status_code != 200 or not resp.text.startswith("http"):
+        raise RuntimeError(f"Temporary image hosting failed: {resp.status_code} {resp.text}")
+    return resp.text.strip()
 
 
 def start_tryon_task(src_file_id: str = None, ref_file_id: str = None,
@@ -142,7 +127,8 @@ def start_tryon_task(src_file_id: str = None, ref_file_id: str = None,
                       gender: str = "female", style: str = "random"):
     """
     Kick off an async try-on task. Either pass uploaded file IDs
-    (src_file_id/ref_file_id, from upload_image) or public URLs
+    (currently unused — see run_tryon_from_uploads, which hosts files
+    publicly and uses URLs instead) or public URLs
     (selfie_url/shoe_image_url) — whichever you have available.
     Returns task_id on success, raises RuntimeError with a readable message on failure.
     """
@@ -214,10 +200,15 @@ def poll_tryon_task(task_id: str, max_wait_seconds: int = 60, interval_seconds: 
 
 
 def run_tryon_from_uploads(selfie_bytes: bytes, shoe_image_bytes: bytes, gender: str = "female", style: str = "random"):
-    """Convenience wrapper for two locally-uploaded images: upload both, start task, poll. Use inside a st.spinner()."""
-    src_id = upload_image(selfie_bytes)
-    ref_id = upload_image(shoe_image_bytes)
-    task_id = start_tryon_task(src_file_id=src_id, ref_file_id=ref_id, gender=gender, style=style)
+    """
+    Convenience wrapper for two locally-uploaded images: host both
+    temporarily to get public URLs, start task, poll. Use inside a st.spinner().
+    """
+    selfie_bytes = _ensure_min_size(selfie_bytes)
+    shoe_image_bytes = _ensure_min_size(shoe_image_bytes)
+    selfie_url = _host_temporarily(selfie_bytes)
+    shoe_url = _host_temporarily(shoe_image_bytes)
+    task_id = start_tryon_task(selfie_url=selfie_url, shoe_image_url=shoe_url, gender=gender, style=style)
     return poll_tryon_task(task_id)
 
 
