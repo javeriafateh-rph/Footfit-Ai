@@ -332,7 +332,9 @@ else:
                                     )
                                 st.image(result_url, caption=f"You, wearing {shoe['name']}")
                             except Exception as e:
-                                st.error(f"Try-on failed: {e}")
+                                st.error(vto.friendly_error(e))
+                                with st.expander("Technical details (for troubleshooting)"):
+                                    st.code(str(e))
 
         st.markdown(
             html_block("""
