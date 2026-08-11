@@ -96,6 +96,53 @@ def _ensure_min_size(file_bytes: bytes) -> bytes:
     return out.getvalue()
 
 
+def friendly_error(raw_error: str) -> str:
+    """
+    Translates the technical exception text from a failed try-on into a
+    plain-language message with a concrete next step, instead of showing
+    raw JSON/API error text to the person using the app. Falls back to a
+    shortened version of the raw error if it doesn't match anything known.
+    """
+    text = str(raw_error)
+
+    if "error_no_face" in text:
+        return (
+            "We couldn't detect a face in that photo. This feature needs a normal photo of "
+            "you — standing, face visible, legs/feet visible too — not a cropped feet-only shot. "
+            "Try again with a different photo."
+        )
+    if "InvalidApiKey" in text or "401" in text:
+        return (
+            "The connection to the try-on service isn't set up correctly (API key issue). "
+            "This is a setup problem, not something you can fix by trying again — please let the "
+            "app's developer know."
+        )
+    if "file_size is required" in text or "files is required" in text or "InvalidParameters" in text:
+        return (
+            "That photo couldn't be processed due to its format. Try a different photo (a normal "
+            "JPEG or PNG works best), or try again in a moment."
+        )
+    if "All image hosts failed" in text or "Native upload failed" in text:
+        return (
+            "We couldn't upload your photo right now — this is usually temporary. Please try again "
+            "in a minute. If it keeps happening, the app's photo-upload setup may need attention."
+        )
+    if "error occurred while processing" in text.lower() or "InternalServerError" in text:
+        return (
+            "The try-on service had trouble with that image. Try a clearer, well-lit photo, or try "
+            "again in a moment."
+        )
+    if "Timed out" in text:
+        return "This is taking longer than usual. Please try again — the service might be busy right now."
+    if "No YOUCAM_API_KEY" in text:
+        return "The try-on service isn't connected yet. This is a setup issue — please let the app's developer know."
+
+    # Fallback: show a shortened version of whatever we don't recognize yet,
+    # so it's still possible to diagnose new issues without dumping raw JSON.
+    short = text if len(text) <= 160 else text[:160] + "..."
+    return f"Something went wrong generating your try-on. Please try again. (Details: {short})"
+
+
 def upload_image(file_bytes: bytes, content_type: str = "image/jpeg") -> str:
     """
     Uploads a local image to YouCam using their documented two-step pattern
@@ -124,7 +171,7 @@ def upload_image(file_bytes: bytes, content_type: str = "image/jpeg") -> str:
     file_bytes = _ensure_min_size(file_bytes)
 
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    payload = {"files": [{"content_type": "image/jpeg", "file_name": "image.jpg"}]}
+    payload = {"files": [{"content_type": "image/jpeg", "file_name": "image.jpg", "file_size": len(file_bytes)}]}
     resp = requests.post(FILE_ENDPOINT, headers=headers, json=payload, timeout=30)
     if resp.status_code != 200:
         raise RuntimeError(f"File request failed ({resp.status_code}): {resp.text}")
