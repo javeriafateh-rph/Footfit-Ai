@@ -53,14 +53,10 @@ FILE_ENDPOINT = f"{API_BASE}/s2s/v2.0/file/shoes"
 TASK_ENDPOINT = f"{API_BASE}/s2s/v2.0/task/shoes"
 STYLES = {
     "Random": "random",
-    "Minimal Style": "minimal",
-    "Boho Style": "boho",
-    "Country Style": "country",
-    "French Elegance": "french_elegance",
-    "Retro": "retro",
-}  # confirmed from Playground UI Aug 2026 — internal API values (right column) are best-guess
-   # from the display labels; if a call 400s on `style`, check the Playground's generated
-   # code snippet for the exact string it sends and correct the values here.
+}  # Only "random" is confirmed against the real API — the other style options
+   # (minimal/boho/country/etc.) were unverified guesses that the API silently
+   # ignored instead of erroring, which is why they looked broken. Removed
+   # rather than leave non-functional choices in the UI.
 
 
 def _api_key():
