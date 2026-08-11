@@ -111,6 +111,11 @@ def friendly_error(raw_error: str) -> str:
             "you — standing, face visible, legs/feet visible too — not a cropped feet-only shot. "
             "Try again with a different photo."
         )
+    if "error_download_image" in text:
+        return (
+            "One of your photos couldn't be downloaded by the try-on service. Please try "
+            "uploading it again, or use a different photo."
+        )
     if "InvalidApiKey" in text or "401" in text:
         return (
             "The connection to the try-on service isn't set up correctly (API key issue). "
