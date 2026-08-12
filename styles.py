@@ -80,26 +80,16 @@ def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, acce
     }}
     .hero-subtitle {{ color: {subtext}; font-size: 1.02rem; margin-top: 8px; position: relative; z-index: 1; }}
 
-    .badge-row {{
-        display: flex;
-        justify-content: center;
-        gap: 10px;
-        flex-wrap: wrap;
+    .tagline {{
+        display: inline-block;
         margin-top: 16px;
+        font-family: 'Poppins', sans-serif;
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: {accent};
+        letter-spacing: 0.01em;
         position: relative;
         z-index: 1;
-    }}
-    .feature-badge {{
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        background-color: {guide_bg};
-        border: 1px solid {card_border};
-        border-radius: 999px;
-        padding: 6px 14px;
-        font-size: 0.8rem;
-        font-weight: 500;
-        color: {subtext};
     }}
 
     .step-badge {{
