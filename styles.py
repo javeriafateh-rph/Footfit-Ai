@@ -53,12 +53,20 @@ def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, acce
 
     .hero {{
         background-color: {bg};
+        background-image:
+            radial-gradient(circle, {card_border} 1px, transparent 1px),
+            radial-gradient(circle at 15% 20%, rgba(14,165,233,0.10), transparent 45%),
+            radial-gradient(circle at 85% 25%, rgba(99,102,241,0.10), transparent 45%);
+        background-size: 22px 22px, auto, auto;
+        background-position: center, center, center;
         border: 1px solid {card_border};
         border-radius: 18px;
         padding: 30px 24px;
         text-align: center;
         margin-bottom: 26px;
         box-shadow: 0 2px 12px rgba(15,23,42,0.06);
+        position: relative;
+        overflow: hidden;
     }}
     .hero-title {{
         font-family: 'Poppins', sans-serif;
@@ -67,8 +75,10 @@ def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, acce
         color: {heading};
         margin: 0;
         letter-spacing: -0.01em;
+        position: relative;
+        z-index: 1;
     }}
-    .hero-subtitle {{ color: {subtext}; font-size: 1.02rem; margin-top: 8px; }}
+    .hero-subtitle {{ color: {subtext}; font-size: 1.02rem; margin-top: 8px; position: relative; z-index: 1; }}
 
     .badge-row {{
         display: flex;
@@ -76,6 +86,8 @@ def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, acce
         gap: 10px;
         flex-wrap: wrap;
         margin-top: 16px;
+        position: relative;
+        z-index: 1;
     }}
     .feature-badge {{
         display: inline-flex;
