@@ -54,10 +54,11 @@ def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, acce
     .hero {{
         background-color: {bg};
         border: 1px solid {card_border};
-        border-radius: 16px;
-        padding: 26px 24px;
+        border-radius: 18px;
+        padding: 30px 24px;
         text-align: center;
-        margin-bottom: 22px;
+        margin-bottom: 26px;
+        box-shadow: 0 2px 12px rgba(15,23,42,0.06);
     }}
     .hero-title {{
         font-family: 'Poppins', sans-serif;
@@ -65,8 +66,29 @@ def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, acce
         font-weight: 700;
         color: {heading};
         margin: 0;
+        letter-spacing: -0.01em;
     }}
-    .hero-subtitle {{ color: {subtext}; font-size: 1.02rem; margin-top: 6px; }}
+    .hero-subtitle {{ color: {subtext}; font-size: 1.02rem; margin-top: 8px; }}
+
+    .badge-row {{
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+    }}
+    .feature-badge {{
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background-color: {guide_bg};
+        border: 1px solid {card_border};
+        border-radius: 999px;
+        padding: 6px 14px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: {subtext};
+    }}
 
     .step-badge {{
         display: inline-block;
@@ -109,9 +131,10 @@ def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, acce
         border-radius: 12px;
         margin-bottom: 14px;
         color: {text};
-        transition: border-color 0.2s ease;
+        box-shadow: 0 1px 4px rgba(15,23,42,0.04);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
     }}
-    .rec-card:hover {{ border-color: {accent}; }}
+    .rec-card:hover {{ border-color: {accent}; box-shadow: 0 4px 14px rgba(15,23,42,0.08); transform: translateY(-1px); }}
     .rec-card strong {{ font-size: 1.15rem; color: {accent}; font-family: 'Poppins', sans-serif; }}
 
     .rec-card.top-match {{
@@ -195,6 +218,16 @@ def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, acce
         color: {disclaimer_text};
         margin-top: 24px;
     }}
+
+    .footer-credit {{
+        text-align: center;
+        color: {subtext};
+        font-size: 0.8rem;
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid {card_border};
+    }}
+    .footer-credit a {{ color: {accent}; text-decoration: none; font-weight: 500; }}
     </style>
     """
 
