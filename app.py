@@ -17,7 +17,7 @@ import database
 import matching
 import vision
 import vto
-from styles import get_css, theme_colors, CATEGORY_PILL_CLASS, CATEGORY_ICON, render_stepper
+from styles import get_css, theme_colors, CATEGORY_PILL_CLASS, CATEGORY_ICON
 
 APP_NAME = "SoleMate"
 
@@ -82,6 +82,7 @@ STEP_LABELS = {
     5: "Step 5 of 5 · Your matches",
 }
 
+st.progress(st.session_state.step / TOTAL_STEPS)
 mode = st.radio("Mode", ["🧭 Guided (recommended)", "🔎 Browse everything"], horizontal=True, label_visibility="collapsed")
 
 if mode == "🔎 Browse everything":
@@ -110,31 +111,25 @@ if mode == "🔎 Browse everything":
         max_price_usd=max_price if max_price > 0 else None,
     )
     st.caption(f"{len(results)} shoe(s)")
-
-    # 2-column grid instead of one long vertical stack — makes better use
-    # of horizontal space and reads more like a shop than a list.
-    grid_cols = st.columns(2)
-    for i, shoe in enumerate(results):
+    for shoe in results:
         price, url = database.price_and_url(shoe, browse_region)
         pill_class = CATEGORY_PILL_CLASS.get(shoe["category"], "pill-everyday")
         icon = CATEGORY_ICON.get(shoe["category"], "👟")
-        with grid_cols[i % 2]:
-            st.markdown(
-                html_block(f"""
-                <div class="rec-card">
-                    <span class="category-pill {pill_class}">{shoe['category']}</span><br>
-                    <strong>{icon} <a href="{url}" target="_blank" style="color:{TC['accent']};text-decoration:underline;">{shoe['name']}</a></strong> — {price}<br>
-                    <span style="color:{TC['subtext']};font-size:0.9rem;">{shoe['feature']}</span>
-                </div>
-                """),
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            html_block(f"""
+            <div class="rec-card">
+                <span class="category-pill {pill_class}">{shoe['category']}</span><br>
+                <strong>{icon} <a href="{url}" target="_blank" style="color:{TC['accent']};text-decoration:underline;">{shoe['name']}</a></strong> — {price}<br>
+                <span style="color:{TC['subtext']};font-size:0.9rem;">{shoe['feature']}</span>
+            </div>
+            """),
+            unsafe_allow_html=True,
+        )
 
 else:
     # =================================================================
     # Guided wizard — one decision per screen
     # =================================================================
-    st.markdown(html_block(render_stepper(st.session_state.step)), unsafe_allow_html=True)
 
     # ---- Step 1: Who's this for (gender) ----
     if st.session_state.step == 1:
@@ -146,7 +141,7 @@ else:
             index=database.GENDERS.index(st.session_state.gender),
         )
         st.session_state.gender = gender
-        st.button("Next →", on_click=go_next, type="primary", use_container_width=True)
+        st.button("Next →", on_click=go_next, type="primary")
 
     # ---- Step 2: What are you shopping for ----
     elif st.session_state.step == 2:
@@ -161,8 +156,8 @@ else:
         if category == "Medical & Comfort":
             st.caption("ℹ️ Comfort- and support-oriented designs, not medical devices. See a podiatrist for a real foot condition.")
         c1, c2 = st.columns(2)
-        c1.button("← Back", on_click=go_back, use_container_width=True)
-        c2.button("Next →", on_click=go_next, type="primary", use_container_width=True)
+        c1.button("← Back", on_click=go_back)
+        c2.button("Next →", on_click=go_next, type="primary")
 
     # ---- Step 3: Foot profile (with optional photo scan tucked away) ----
     elif st.session_state.step == 3:
@@ -236,8 +231,8 @@ else:
                     st.warning("No card detected in that photo — try recapturing with the card flatter and more visible, or enter your foot length manually above.")
 
         c1, c2 = st.columns(2)
-        c1.button("← Back", on_click=go_back, use_container_width=True)
-        c2.button("Next →", on_click=go_next, type="primary", use_container_width=True)
+        c1.button("← Back", on_click=go_back)
+        c2.button("Next →", on_click=go_next, type="primary")
 
     # ---- Step 4: Region (kept tiny, one dropdown) ----
     elif st.session_state.step == 4:
@@ -248,8 +243,8 @@ else:
             index=list(database.REGIONS.keys()).index(st.session_state.region),
         )
         c1, c2 = st.columns(2)
-        c1.button("← Back", on_click=go_back, use_container_width=True)
-        c2.button("Show my matches →", on_click=go_next, type="primary", use_container_width=True)
+        c1.button("← Back", on_click=go_back)
+        c2.button("Show my matches →", on_click=go_next, type="primary")
 
     # ---- Step 5: Results ----
     elif st.session_state.step == 5:
