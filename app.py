@@ -32,6 +32,11 @@ st.markdown(
     <div class="hero">
         <div class="hero-title">👟 {APP_NAME}</div>
         <div class="hero-subtitle">Find your fit. See it on you.</div>
+        <div class="badge-row">
+            <span class="feature-badge">🎯 AI-Powered Fit Matching</span>
+            <span class="feature-badge">✨ YouCam Virtual Try-On</span>
+            <span class="feature-badge">🌍 7 Regions</span>
+        </div>
     </div>
     """),
     unsafe_allow_html=True,
@@ -341,6 +346,9 @@ else:
             <div class="disclaimer">
             SoleMate provides general fit guidance, not a podiatric diagnosis. If you have foot pain, diabetes,
             or another condition affecting your feet, please consult a podiatrist before choosing footwear.
+            </div>
+            <div class="footer-credit">
+            Virtual try-on powered by <a href="https://yce.perfectcorp.com/ai-api" target="_blank">YouCam AI Shoes API</a> · Perfect Corp
             </div>
             """),
             unsafe_allow_html=True,
