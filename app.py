@@ -32,11 +32,7 @@ st.markdown(
     <div class="hero">
         <div class="hero-title">👟 {APP_NAME}</div>
         <div class="hero-subtitle">Find your fit. See it on you.</div>
-        <div class="badge-row">
-            <span class="feature-badge">🎯 AI-Powered Fit Matching</span>
-            <span class="feature-badge">✨ YouCam Virtual Try-On</span>
-            <span class="feature-badge">🌍 7 Regions</span>
-        </div>
+        <div class="tagline">Know it fits. See it first.</div>
     </div>
     """),
     unsafe_allow_html=True,
@@ -316,8 +312,7 @@ else:
                         fallback_shoe_file = col_b.file_uploader("Shoe photo", type=["jpg", "jpeg", "png"], key=f"shoephoto_{shoe['id']}")
 
                     gender = GENDER_TO_VTO.get(st.session_state.gender, "female")
-                    style_label = st.selectbox("Style", list(vto.STYLES.keys()), key=f"style_{shoe['id']}")
-                    style = vto.STYLES[style_label]
+                    style = "random"  # only confirmed working value — dropdown removed since there was only one real option
 
                     if st.button("Generate", key=f"tryon_btn_{shoe['id']}", type="primary"):
                         shoe_bytes = None
