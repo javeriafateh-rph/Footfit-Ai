@@ -1,4 +1,4 @@
-# Solemate
+# Solefit
 
 ## v3 update — categories, richer foot-shape matching, more regions
 
