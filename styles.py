@@ -1,4 +1,6 @@
-FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@400;500&display=swap');"
+FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500&display=swap');"
+
+ACCENT_POP = "#F43F5E"  # warm coral/rose — used sparingly for "pop" highlights against the blue/indigo base palette
 
 CATEGORY_PILL_CLASS = {
     "Everyday / Casual": "pill-everyday",
@@ -164,6 +166,74 @@ def _build_css(*, bg, card_bg, card_border, text, subtext, heading, accent, acce
         text-transform: uppercase;
         margin-bottom: 6px;
     }}
+
+    /* Editorial serif treatment for the big step headlines (h3 from st.markdown "### ...") */
+    [data-testid="stMarkdownContainer"] h3 {{
+        font-family: 'Fraunces', serif;
+        font-weight: 600;
+        color: {heading};
+        letter-spacing: -0.01em;
+    }}
+
+    /* Numbered step indicator — nodes connected by lines, replaces the flat progress bar */
+    .step-indicator {{
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        gap: 2px;
+        margin: 4px 0 22px 0;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+    }}
+    .step-node {{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 46px;
+    }}
+    .step-node-circle {{
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.72rem;
+        font-weight: 700;
+        border: 2px solid {card_border};
+        color: {subtext};
+        background-color: {bg};
+        transition: all 0.2s ease;
+    }}
+    .step-node.active .step-node-circle {{
+        border-color: {ACCENT_POP};
+        color: {ACCENT_POP};
+        background-color: {bg};
+        box-shadow: 0 0 0 3px {ACCENT_POP}22;
+    }}
+    .step-node.done .step-node-circle {{
+        border-color: {accent};
+        background-color: {accent};
+        color: #FFFFFF;
+    }}
+    .step-node-label {{
+        font-size: 0.62rem;
+        color: {subtext};
+        margin-top: 4px;
+        text-align: center;
+        max-width: 60px;
+        line-height: 1.15;
+    }}
+    .step-node.active .step-node-label {{ color: {ACCENT_POP}; font-weight: 600; }}
+    .step-node.done .step-node-label {{ color: {accent}; }}
+    .step-connector {{
+        height: 2px;
+        width: 24px;
+        background-color: {card_border};
+        margin-top: 12px;
+        flex-shrink: 0;
+    }}
+    .step-connector.done {{ background-color: {accent}; }}
 
     .match-bar-track {{
         background-color: {track_bg};
