@@ -19,7 +19,7 @@ import vision
 import vto
 from styles import get_css, theme_colors, CATEGORY_PILL_CLASS, CATEGORY_ICON
 
-APP_NAME = "SoleMate"
+APP_NAME = "SoleFit"
 
 st.set_page_config(page_title=APP_NAME, page_icon="👟", layout="centered")
 database.init_db()
@@ -83,7 +83,35 @@ STEP_LABELS = {
     5: "Step 5 of 5 · Your matches",
 }
 
-st.progress(st.session_state.step / TOTAL_STEPS)
+STEP_SHORT_NAMES = {
+    1: "Who's this for",
+    2: "Shopping for",
+    3: "Foot profile",
+    4: "Region",
+    5: "Matches",
+}
+
+
+def render_step_indicator(current_step: int, total_steps: int):
+    """Numbered nodes connected by lines, with the current step highlighted — used instead of a flat progress bar."""
+    nodes_html = []
+    for i in range(1, total_steps + 1):
+        state = "done" if i < current_step else ("active" if i == current_step else "upcoming")
+        nodes_html.append(
+            f'<div class="step-node {state}">'
+            f'<div class="step-node-circle">{"✓" if state == "done" else i}</div>'
+            f'<div class="step-node-label">{STEP_SHORT_NAMES[i]}</div>'
+            f'</div>'
+        )
+        if i < total_steps:
+            nodes_html.append(f'<div class="step-connector {"done" if i < current_step else ""}"></div>')
+    st.markdown(
+        html_block(f'<div class="step-indicator">{"".join(nodes_html)}</div>'),
+        unsafe_allow_html=True,
+    )
+
+
+render_step_indicator(st.session_state.step, TOTAL_STEPS)
 mode = st.radio("Mode", ["🧭 Guided (recommended)", "🔎 Browse everything"], horizontal=True, label_visibility="collapsed")
 
 if mode == "🔎 Browse everything":
@@ -339,7 +367,7 @@ else:
         st.markdown(
             html_block("""
             <div class="disclaimer">
-            SoleMate provides general fit guidance, not a podiatric diagnosis. If you have foot pain, diabetes,
+            SoleFit provides general fit guidance, not a podiatric diagnosis. If you have foot pain, diabetes,
             or another condition affecting your feet, please consult a podiatrist before choosing footwear.
             </div>
             <div class="footer-credit">
