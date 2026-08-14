@@ -70,10 +70,21 @@ def analyze_foot_contour(pil_image, px_per_mm: float = None, known_length_mm: fl
     Measure the foot's bounding box in the photo.
 
     If px_per_mm is supplied (from a detected reference card), returns real
-    millimeter measurements. If instead known_length_mm is supplied (user
-    manually entered their foot length), we calibrate off that. If neither
-    is available, we return None values and the caller should ask the user
-    for one or the other rather than fabricate a number.
+    millimeter measurements for BOTH width and length — this is a genuine
+    photo-based measurement.
+
+    If instead known_length_mm is supplied (user manually typed their foot
+    length), that number is used as-is for length — it is NOT re-derived
+    from the photo, because doing so is mathematically circular (deriving a
+    scale from a known length, then "measuring" length with that same scale,
+    always returns exactly the original number regardless of the actual
+    photo — this was a real bug, caught by testing two different-sized feet
+    and finding they returned identical "measured" lengths). In this mode,
+    only width is estimated from the photo, scaled against the user's
+    provided length.
+
+    If neither is available, returns None values and the caller should ask
+    the user for one or the other rather than fabricate a number.
     """
     contours, img_shape = _contours_from(pil_image)
     if not contours:
@@ -86,12 +97,18 @@ def analyze_foot_contour(pil_image, px_per_mm: float = None, known_length_mm: fl
     # bounding-box side as length, short side as forefoot width.
     length_px, width_px = max(w, h), min(w, h)
 
+    used_manual_length = False
     if px_per_mm is None and known_length_mm is not None and length_px > 0:
         px_per_mm = length_px / known_length_mm
+        used_manual_length = True
 
     if px_per_mm:
         width_mm = round(width_px / px_per_mm, 1)
-        length_mm = round(length_px / px_per_mm, 1)
+        # Only recompute length from the photo if we calibrated via a real
+        # detected card. If calibration came from the user's own manual
+        # length entry, use that value directly instead of re-deriving it
+        # circularly from the same scale it was used to create.
+        length_mm = known_length_mm if used_manual_length else round(length_px / px_per_mm, 1)
         calibrated = True
     else:
         width_mm = None
@@ -106,6 +123,7 @@ def analyze_foot_contour(pil_image, px_per_mm: float = None, known_length_mm: fl
         "length_mm": length_mm,
         "shape": shape,
         "calibrated": calibrated,
+        "length_source": "manual" if used_manual_length else ("card" if calibrated else None),
     }
 
 
