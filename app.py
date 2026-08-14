@@ -267,7 +267,13 @@ else:
                 result = vision.analyze_foot_contour(img, px_per_mm=px_per_mm, known_length_mm=known_len)
 
                 if result["calibrated"]:
-                    st.success(f"📏 Calibrated: {result['width_mm']}mm wide, {result['length_mm']}mm long")
+                    if result["length_source"] == "card":
+                        st.success(f"📏 Measured from your photo: {result['width_mm']}mm wide, {result['length_mm']}mm long")
+                    else:
+                        st.info(
+                            f"Using your entered length ({result['length_mm']}mm). "
+                            f"Width estimated from the photo: {result['width_mm']}mm."
+                        )
                     st.session_state.foot_length_mm = result["length_mm"]
                     ratio = result["width_mm"] / result["length_mm"] if result["length_mm"] else 0.35
                     suggested = "Wide" if ratio > 0.42 else ("Standard" if ratio > 0.38 else "Narrow")
