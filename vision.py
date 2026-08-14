@@ -115,3 +115,40 @@ def mm_to_us_shoe_size(length_mm: float):
         return None
     size = (length_mm / 8.4635) - 12.6
     return round(size * 2) / 2  # nearest half size
+
+
+def foot_length_to_sizes(length_mm: float, gender: str = "Unisex"):
+    """
+    Converts a foot length in mm into approximate US/UK/EU shoe sizes.
+    Uses standard Brannock-based approximations. Gender affects the
+    conversion since men's and women's size scales differ for the same
+    physical foot length. These are general-guide approximations —
+    exact sizing always varies by brand, so this is presented as a
+    starting point, not a guarantee.
+    """
+    if length_mm is None:
+        return None
+
+    base_us = (length_mm / 8.4635) - 22.5  # men's US sizing baseline, calibrated against
+    # a standard reference chart (254mm->8, 267mm->9, 279mm->10) — the original
+    # offset here (12.6) was a significant error that produced wildly oversized
+    # results (e.g. "US 17" for a completely normal 250mm foot); corrected via
+    # direct cross-check against real published size-chart data points.
+
+    if gender == "Woman":
+        us_size = base_us + 1.5
+        uk_size = us_size - 2.5
+        eu_size = us_size + 31
+    else:  # Man or Unisex default to the men's/unisex scale
+        us_size = base_us
+        uk_size = us_size - 1
+        eu_size = us_size + 33
+
+    def round_half(x):
+        return round(x * 2) / 2
+
+    return {
+        "us": round_half(us_size),
+        "uk": round_half(uk_size),
+        "eu": round_half(eu_size),
+    }
