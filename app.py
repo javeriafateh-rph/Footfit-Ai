@@ -57,6 +57,8 @@ if "arch" not in st.session_state:
     st.session_state.arch = "Not sure"
 if "width" not in st.session_state:
     st.session_state.width = "Not sure"
+if "foot_length_mm" not in st.session_state:
+    st.session_state.foot_length_mm = None
 
 TOTAL_STEPS = 5
 
@@ -210,6 +212,21 @@ else:
                 index=(database.WIDTHS + ["Not sure"]).index(st.session_state.width),
             )
 
+        know_length = st.checkbox(
+            "I know my foot length (for an exact size recommendation)",
+            value=st.session_state.foot_length_mm is not None,
+        )
+        if know_length:
+            default_cm = (st.session_state.foot_length_mm / 10) if st.session_state.foot_length_mm else 25.0
+            length_cm = st.number_input(
+                "Foot length in cm (heel to longest toe)", 15.0, 35.0, float(default_cm), 0.1,
+                key="manual_length_step3",
+            )
+            st.session_state.foot_length_mm = length_cm * 10
+        else:
+            st.session_state.foot_length_mm = None
+            st.caption("No length yet? You can still get matches — just skip this and add it later, or scan a photo below.")
+
         with st.expander("Not sure? Quick tips"):
             st.markdown(
                 "- **Toe shape:** big toe longest = *Egyptian*, second toe longest = *Greek*, roughly even = *Roman/Square*.\n"
@@ -251,6 +268,7 @@ else:
 
                 if result["calibrated"]:
                     st.success(f"📏 Calibrated: {result['width_mm']}mm wide, {result['length_mm']}mm long")
+                    st.session_state.foot_length_mm = result["length_mm"]
                     ratio = result["width_mm"] / result["length_mm"] if result["length_mm"] else 0.35
                     suggested = "Wide" if ratio > 0.42 else ("Standard" if ratio > 0.38 else "Narrow")
                     if st.button(f"Use suggested width: {suggested}"):
@@ -280,6 +298,26 @@ else:
         st.markdown(f'<div class="step-label">{STEP_LABELS[5]}</div>', unsafe_allow_html=True)
         st.markdown("### Nice! Here are your best matches")
         st.button("← Adjust my answers", on_click=go_back)
+
+        if st.session_state.foot_length_mm:
+            sizes = vision.foot_length_to_sizes(st.session_state.foot_length_mm, st.session_state.gender)
+            st.markdown(
+                html_block(f"""
+                <div class="card">
+                    <h4>📏 Your Recommended Size</h4>
+                    <p style="margin:0;font-size:1.05rem;">
+                        <b>US {sizes['us']}</b> &nbsp;·&nbsp; <b>UK {sizes['uk']}</b> &nbsp;·&nbsp; <b>EU {sizes['eu']}</b>
+                    </p>
+                    <p style="margin:6px 0 0 0;font-size:0.82rem;color:{TC['subtext']};">
+                        Approximate general guide based on a {st.session_state.foot_length_mm/10:.1f}cm foot length —
+                        exact sizing varies by brand, so check the specific shoe's size chart too.
+                    </p>
+                </div>
+                """),
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("💡 Add your foot length back in Step 3 to get an exact US/UK/EU size recommendation here.")
 
         all_in_category = database.all_shoes(category=st.session_state.category, gender=st.session_state.gender)
         ranked = matching.rank_shoes(
