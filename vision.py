@@ -37,12 +37,14 @@ def _contours_from(pil_image):
     return contours, img.shape[:2]
 
 
-def detect_reference_card(pil_image, aspect_tolerance=0.12):
+def _find_card_contour(contours, aspect_tolerance=0.12):
     """
-    Try to find a card-shaped contour (a near-rectangle with the ID-1 aspect
-    ratio) in the image. Returns pixels-per-mm if found, else None.
+    Finds the best card-shaped contour among a set of contours. Returns
+    (contour, long_side_px, short_side_px, area) or None. Shared by
+    detect_reference_card() and analyze_foot_contour() so both use the
+    exact same identification of "which contour is the card" — this is
+    what lets the foot-detection step correctly exclude it.
     """
-    contours, _ = _contours_from(pil_image)
     best = None
     for c in contours:
         area = cv2.contourArea(c)
@@ -55,19 +57,38 @@ def detect_reference_card(pil_image, aspect_tolerance=0.12):
         long_side, short_side = max(rw, rh), min(rw, rh)
         ratio = long_side / short_side
         if abs(ratio - CARD_ASPECT) / CARD_ASPECT <= aspect_tolerance:
-            # Prefer the largest matching candidate (less likely to be noise)
-            if best is None or area > best[0]:
-                best = (area, long_side, short_side)
-    if best is None:
+            if best is None or area > best[3]:
+                best = (c, long_side, short_side, area)
+    return best
+
+
+def detect_reference_card(pil_image, aspect_tolerance=0.12):
+    """
+    Try to find a card-shaped contour (a near-rectangle with the ID-1 aspect
+    ratio) in the image. Returns pixels-per-mm if found, else None.
+    """
+    contours, _ = _contours_from(pil_image)
+    card = _find_card_contour(contours, aspect_tolerance)
+    if card is None:
         return None
-    _, long_side_px, _ = best
-    px_per_mm = long_side_px / CARD_WIDTH_MM
-    return px_per_mm
+    _, long_side_px, _, _ = card
+    return long_side_px / CARD_WIDTH_MM
 
 
 def analyze_foot_contour(pil_image, px_per_mm: float = None, known_length_mm: float = None):
     """
     Measure the foot's bounding box in the photo.
+
+    CRITICAL FIX: previously this picked "the largest contour in the photo"
+    as the foot, with no exclusion for the reference card. Since a solid
+    rectangular card often produces a larger, cleaner contour area than an
+    actual foot shape, this frequently caused the card itself to be
+    measured as if it were the foot — proven by testing two very
+    different-sized synthetic feet with a card present, both photos
+    returning identical "foot" measurements that matched the card's real
+    dimensions almost exactly (85.9mm vs the card's true 85.60mm width).
+    Now the card's own contour is explicitly identified and excluded before
+    picking the largest REMAINING contour as the foot.
 
     If px_per_mm is supplied (from a detected reference card), returns real
     millimeter measurements for BOTH width and length — this is a genuine
@@ -75,22 +96,27 @@ def analyze_foot_contour(pil_image, px_per_mm: float = None, known_length_mm: fl
 
     If instead known_length_mm is supplied (user manually typed their foot
     length), that number is used as-is for length — it is NOT re-derived
-    from the photo, because doing so is mathematically circular (deriving a
-    scale from a known length, then "measuring" length with that same scale,
-    always returns exactly the original number regardless of the actual
-    photo — this was a real bug, caught by testing two different-sized feet
-    and finding they returned identical "measured" lengths). In this mode,
-    only width is estimated from the photo, scaled against the user's
-    provided length.
+    from the photo, because doing so is mathematically circular. In this
+    mode, only width is estimated from the photo, scaled against the
+    user's provided length.
 
     If neither is available, returns None values and the caller should ask
     the user for one or the other rather than fabricate a number.
     """
     contours, img_shape = _contours_from(pil_image)
     if not contours:
-        return {"width_mm": None, "length_mm": None, "shape": "Standard / Tapered Forefoot", "calibrated": False}
+        return {"width_mm": None, "length_mm": None, "shape": "Standard / Tapered Forefoot", "calibrated": False, "length_source": None}
 
-    c = max(contours, key=cv2.contourArea)
+    # Identify the card contour (if any) so we can exclude it from foot detection.
+    card = _find_card_contour(contours)
+    card_contour = card[0] if card else None
+
+    foot_candidates = [c for c in contours if card_contour is None or not np.array_equal(c, card_contour)]
+    if not foot_candidates:
+        # Nothing left to measure if the only contour found was the card itself.
+        return {"width_mm": None, "length_mm": None, "shape": "Standard / Tapered Forefoot", "calibrated": False, "length_source": None}
+
+    c = max(foot_candidates, key=cv2.contourArea)
     x, y, w, h = cv2.boundingRect(c)
 
     # A top-down foot photo is taller than wide in pixels; treat the long
@@ -125,6 +151,37 @@ def analyze_foot_contour(pil_image, px_per_mm: float = None, known_length_mm: fl
         "calibrated": calibrated,
         "length_source": "manual" if used_manual_length else ("card" if calibrated else None),
     }
+
+
+def annotate_detection(pil_image, px_per_mm: float = None, known_length_mm: float = None):
+    """
+    Returns a copy of the image with the detected card (green) and detected
+    foot (blue) outlined, so the person can visually confirm the app found
+    the right things — instead of trusting an opaque number. This directly
+    addresses a real failure mode: a heuristic detector can be confident
+    and wrong (e.g. matching a shadow or an unrelated edge), and a visual
+    check catches that instantly in a way a plain number never can.
+    """
+    img_rgb = np.array(pil_image.convert("RGB")).copy()
+    img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+
+    contours, _ = _contours_from(pil_image)
+    card = _find_card_contour(contours)
+    if card:
+        card_contour = card[0]
+        cv2.drawContours(img, [card_contour], -1, (0, 200, 0), 3)  # green = detected card
+        cv2.putText(img, "CARD", tuple(card_contour[0][0]), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 0), 2)
+
+    foot_candidates = [c for c in contours if card is None or not np.array_equal(c, card[0])]
+    if foot_candidates:
+        foot_contour = max(foot_candidates, key=cv2.contourArea)
+        cv2.drawContours(img, [foot_contour], -1, (255, 100, 0), 3)  # blue = detected foot
+        x, y, w, h = cv2.boundingRect(foot_contour)
+        cv2.putText(img, "FOOT", (x, max(y - 10, 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 100, 0), 2)
+
+    from PIL import Image as PILImage
+    annotated_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    return PILImage.fromarray(annotated_rgb)
 
 
 def mm_to_us_shoe_size(length_mm: float):
