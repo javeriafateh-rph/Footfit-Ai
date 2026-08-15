@@ -362,8 +362,8 @@ else:
                 if use_manual:
                     px_per_mm, known_len = None, float(manual_length_cm * 10)
                 else:
-                    raw_px = vision.detect_reference_card(img)
-                    px_per_mm = sanitize_px_per_mm(raw_px)
+                    detected_px_per_mm, card_found = vision.detect_reference_card(img)
+                    px_per_mm = sanitize_px_per_mm(detected_px_per_mm) if card_found else None
                     known_len = None
 
                 result = vision.analyze_foot_contour(
