@@ -1,12 +1,13 @@
 import database
 import matching
+import numpy as np
 from PIL import Image
 import streamlit as st
 from styles import CATEGORY_ICON, CATEGORY_PILL_CLASS, get_css, theme_colors
 import vision
 import vto
 
-APP_NAME = "FootFit AI"
+APP_NAME = "SoleFit"
 
 st.set_page_config(page_title=APP_NAME, page_icon="👟", layout="centered")
 database.init_db()
@@ -79,6 +80,21 @@ def normalize_length_to_cm(raw_len: float) -> float:
     if raw_len is None:
         return 25.0
     return raw_len / 10.0 if raw_len > 50.0 else raw_len
+
+
+def sanitize_px_per_mm(raw_px):
+    """Converts numpy arrays or sequences to a clean float scalar or None to avoid TypeErrors."""
+    if raw_px is None:
+        return None
+    if isinstance(raw_px, np.ndarray):
+        if raw_px.size == 1:
+            return float(raw_px.item())
+        return None
+    try:
+        val = float(raw_px)
+        return val if val > 0 else None
+    except (ValueError, TypeError):
+        return None
 
 
 GENDER_TO_VTO = {"Man": "male", "Woman": "female", "Unisex": "female"}
@@ -346,7 +362,9 @@ else:
                 if use_manual:
                     px_per_mm, known_len = None, manual_length_cm * 10
                 else:
-                    px_per_mm, known_len = vision.detect_reference_card(img), None
+                    raw_px = vision.detect_reference_card(img)
+                    px_per_mm = sanitize_px_per_mm(raw_px)
+                    known_len = None
 
                 result = vision.analyze_foot_contour(
                     img, px_per_mm=px_per_mm, known_length_mm=known_len
