@@ -361,6 +361,7 @@ else:
 
                 if use_manual:
                     px_per_mm, known_len = None, float(manual_length_cm * 10)
+                    card_found = None
                 else:
                     detected_px_per_mm, card_found = vision.detect_reference_card(img)
                     px_per_mm = sanitize_px_per_mm(detected_px_per_mm) if card_found else None
@@ -409,9 +410,15 @@ else:
                         st.session_state.width = suggested
                         st.rerun()
                 else:
-                    st.warning(
-                        "Reference card not detected. Adjust camera position, improve lighting, or use manual length input."
-                    )
+                    if card_found is False:
+                        st.warning(
+                            "Reference card not detected. Adjust camera position, improve lighting, or use manual length input."
+                        )
+                    else:
+                        st.warning(
+                            "Couldn't isolate your foot from the background. Try a plain, non-skin-toned surface "
+                            "(avoid tan/brown patterned rugs or floors) with even lighting, or use manual length input."
+                        )
 
         c1, c2 = st.columns(2)
         c1.button("← Back", on_click=go_back)
