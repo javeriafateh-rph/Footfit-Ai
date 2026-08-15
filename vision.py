@@ -28,7 +28,7 @@ def _find_card_rect(img_bgr):
 
     contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
-    best_rect, best_area = None, 0
+    best_rect, best_deviation = None, None
     for c in contours:
         area = cv2.contourArea(c)
         if area < (img_area * 0.003) or area > (img_area * 0.25):
@@ -39,17 +39,36 @@ def _find_card_rect(img_bgr):
         if rw == 0 or rh == 0:
             continue
 
+        # A real card is a solid rectangle that nearly fills its bounding box.
+        # Irregular shapes (limbs, merged background texture) that coincidentally
+        # have a card-like aspect ratio tend to fill much less of their box, so
+        # this rejects them even when their aspect ratio alone would pass.
+        extent = area / (rw * rh)
+        if extent < 0.6:
+            continue
+
         long_side, short_side = max(rw, rh), min(rw, rh)
         ratio = long_side / short_side
+        deviation = abs(ratio - CARD_ASPECT) / CARD_ASPECT
 
-        if abs(ratio - CARD_ASPECT) / CARD_ASPECT <= 0.18 and area > best_area:
-            best_rect, best_area = rect, area
+        if deviation <= 0.15 and (best_deviation is None or deviation < best_deviation):
+            best_rect, best_deviation = rect, deviation
 
     return best_rect
 
 
 def _find_foot_contour(img_bgr):
-    """Returns the largest skin-toned contour, or None if no foot-like region is found."""
+    """Returns the largest skin-toned contour, or None if no foot-like region is found.
+
+    On a warm-toned background (tan/brown rugs, wood floors) the skin-color mask
+    can match most of the frame, merging the foot with the background into one
+    giant blob. A real foot photographed reasonably close-up occupies a bounded
+    portion of the frame, so an implausibly large match is rejected as unreliable
+    rather than returned as a bogus measurement.
+    """
+    h, w = img_bgr.shape[:2]
+    img_area = h * w
+
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     lower_skin = np.array([0, 20, 60])
     upper_skin = np.array([25, 255, 255])
@@ -61,7 +80,11 @@ def _find_foot_contour(img_bgr):
     contours, _ = cv2.findContours(skin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
-    return max(contours, key=cv2.contourArea)
+
+    foot_c = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(foot_c) > (img_area * 0.35):
+        return None
+    return foot_c
 
 
 def detect_reference_card(pil_image):
@@ -121,18 +144,22 @@ def analyze_foot_contour(pil_image, px_per_mm=None, known_length_mm=None):
         width_mm = round(width_px / px_per_mm, 1)
         length_mm = round(length_px / px_per_mm, 1)
         calibrated = True
+        length_source = "card"
     elif known_length_mm and known_length_mm > 0:
         length_mm = known_length_mm
         width_mm = round((width_px / length_px) * known_length_mm, 1) if length_px > 0 else 95.0
         calibrated = True
+        length_source = "manual"
     else:
         width_mm, length_mm, calibrated = None, None, False
+        length_source = None
 
     return {
         "width_mm": width_mm,
         "length_mm": length_mm,
         "shape": "Wide" if (width_px / (length_px or 1)) > 0.42 else "Standard",
         "calibrated": calibrated,
+        "length_source": length_source,
     }
 
 
