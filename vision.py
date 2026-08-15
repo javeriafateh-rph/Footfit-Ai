@@ -1,48 +1,42 @@
 """
-vision.py - Robust Foot and Card Detection Pipeline
+vision.py - Reliable vision detection for FootFit AI
 """
 
 import cv2
 import numpy as np
 
 CARD_WIDTH_MM = 85.60
-CARD_HEIGHT_MM = 53.98
-CARD_ASPECT = CARD_WIDTH_MM / CARD_HEIGHT_MM  # ~1.586
+CARD_ASPECT = CARD_WIDTH_MM / 53.98
 
 
-def isolate_card_and_foot(img_bgr):
-    """Segment foot (skin tone) and card (blue/dark object) using HSV color space."""
+def detect_reference_card(pil_image):
+    """
+    Returns (px_per_mm, card_found_boolean) safely so app.py unpacking never crashes.
+    """
+    if pil_image is None:
+        return None, False
+
+    img_rgb = np.array(pil_image.convert("RGB"))
+    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB)
+    h, w = img_bgr.shape[:2]
+    img_area = h * w
+
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
 
-    # 1. Skin Color Mask (Foot)
-    lower_skin = np.array([0, 20, 70], dtype=np.uint8)
-    upper_skin = np.array([20, 255, 255], dtype=np.uint8)
-    skin_mask = cv2.inRange(hsv, lower_skin, upper_skin)
+    # Color thresholding + adaptive edge fallback
+    lower_blue = np.array([85, 40, 40])
+    upper_blue = np.array([135, 255, 255])
+    mask = cv2.inRange(hsv, lower_blue, upper_blue)
 
-    # Clean skin mask noise
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_CLOSE, kernel)
-    skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_OPEN, kernel)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-    # 2. Blue Card Mask (Card)
-    lower_blue = np.array([90, 50, 50], dtype=np.uint8)
-    upper_blue = np.array([130, 255, 255], dtype=np.uint8)
-    card_mask = cv2.inRange(hsv, lower_blue, upper_blue)
-    card_mask = cv2.morphologyEx(card_mask, cv2.MORPH_CLOSE, kernel)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    return skin_mask, card_mask
-
-
-def _find_card_contour(card_mask, img_shape):
-    """Find vertical or horizontal card contours cleanly."""
-    contours, _ = cv2.findContours(card_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    h, w = img_shape
-    img_area = h * w
-    best = None
-
+    best_card = None
     for c in contours:
         area = cv2.contourArea(c)
-        if area < (img_area * 0.005) or area > (img_area * 0.25):
+        if area < (img_area * 0.003) or area > (img_area * 0.25):
             continue
 
         rect = cv2.minAreaRect(c)
@@ -53,41 +47,51 @@ def _find_card_contour(card_mask, img_shape):
         long_side, short_side = max(rw, rh), min(rw, rh)
         ratio = long_side / short_side
 
-        # Check aspect ratio tolerance regardless of vertical/horizontal orientation
-        if abs(ratio - CARD_ASPECT) / CARD_ASPECT <= 0.30:
-            if best is None or area > best[3]:
-                best = (c, long_side, short_side, area)
+        if abs(ratio - CARD_ASPECT) / CARD_ASPECT <= 0.35:
+            if best_card is None or area > best_card[1]:
+                best_card = (long_side, area)
 
-    return best
+    if best_card:
+        px_per_mm = best_card[0] / CARD_WIDTH_MM
+        return px_per_mm, True
+
+    return None, False
 
 
-def analyze_foot_contour(pil_image, px_per_mm: float = None, known_length_mm: float = None):
-    img_rgb = np.array(pil_image.convert("RGB"))
-    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-    h, w = img_bgr.shape[:2]
-
-    skin_mask, card_mask = isolate_card_and_foot(img_bgr)
-
-    # Detect Card
-    card = _find_card_contour(card_mask, (h, w))
-    if card and px_per_mm is None:
-        long_side_px = card[1]
-        px_per_mm = long_side_px / CARD_WIDTH_MM
-
-    # Detect Foot
-    foot_contours, _ = cv2.findContours(skin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not foot_contours:
+def analyze_foot_contour(pil_image, px_per_mm=None, known_length_mm=None):
+    """Processes foot dimensions without raising AttributeError."""
+    if pil_image is None:
         return {"width_mm": None, "length_mm": None, "shape": "Standard", "calibrated": False}
 
-    # Select largest contiguous skin contour
-    foot_c = max(foot_contours, key=cv2.contourArea)
+    img_rgb = np.array(pil_image.convert("RGB"))
+    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB)
+
+    # Skin color threshold
+    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    lower_skin = np.array([0, 20, 60])
+    upper_skin = np.array([25, 255, 255])
+    skin_mask = cv2.inRange(hsv, lower_skin, upper_skin)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = cv2.findContours(skin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if not contours:
+        return {"width_mm": None, "length_mm": None, "shape": "Standard", "calibrated": False}
+
+    foot_c = max(contours, key=cv2.contourArea)
     rect = cv2.minAreaRect(foot_c)
     (rw, rh) = rect[1]
     length_px, width_px = max(rw, rh), min(rw, rh)
 
-    if px_per_mm:
+    if px_per_mm and px_per_mm > 0:
         width_mm = round(width_px / px_per_mm, 1)
         length_mm = round(length_px / px_per_mm, 1)
+        calibrated = True
+    elif known_length_mm and known_length_mm > 0:
+        length_mm = known_length_mm
+        width_mm = round((width_px / length_px) * known_length_mm, 1) if length_px > 0 else 95.0
         calibrated = True
     else:
         width_mm, length_mm, calibrated = None, None, False
@@ -98,3 +102,18 @@ def analyze_foot_contour(pil_image, px_per_mm: float = None, known_length_mm: fl
         "shape": "Wide" if (width_px / (length_px or 1)) > 0.42 else "Standard",
         "calibrated": calibrated,
     }
+
+
+def foot_length_to_sizes(length_mm: float, gender: str = "Unisex"):
+    if not length_mm or length_mm <= 0:
+        return {"us": "-", "uk": "-", "eu": "-"}
+
+    length_cm = length_mm / 10.0 if length_mm > 50 else length_mm
+    eu_size = round(((length_cm + 1.5) * 1.5) * 2) / 2
+    length_inches = length_cm / 2.54
+
+    us_offset = 21.0 if gender == "Woman" else 22.0
+    us_size = round(((3 * length_inches) - us_offset) * 2) / 2
+    uk_size = us_size - (2.0 if gender == "Woman" else 1.0)
+
+    return {"us": max(1.0, us_size), "uk": max(0.5, uk_size), "eu": max(15.0, eu_size)}
