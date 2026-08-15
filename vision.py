@@ -9,31 +9,26 @@ CARD_WIDTH_MM = 85.60
 CARD_ASPECT = CARD_WIDTH_MM / 53.98
 
 
-def detect_reference_card(pil_image):
-    """
-    Returns (px_per_mm, card_found_boolean) safely so app.py unpacking never crashes.
-    """
-    if pil_image is None:
-        return None, False
+def _find_card_rect(img_bgr):
+    """Locates the best card-shaped rectangle by edges + aspect ratio (color-agnostic).
 
-    img_rgb = np.array(pil_image.convert("RGB"))
-    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB)
+    A pure color mask only finds cards that happen to match one hue, so most
+    real ID/credit cards (white, gray, black, patterned) were never detected.
+    Detecting by shape instead works regardless of the card's color.
+    """
     h, w = img_bgr.shape[:2]
     img_area = h * w
 
-    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 40, 120)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    edges = cv2.dilate(edges, kernel, iterations=2)
+    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
 
-    # Color thresholding + adaptive edge fallback
-    lower_blue = np.array([85, 40, 40])
-    upper_blue = np.array([135, 255, 255])
-    mask = cv2.inRange(hsv, lower_blue, upper_blue)
+    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    best_card = None
+    best_rect, best_area = None, 0
     for c in contours:
         area = cv2.contourArea(c)
         if area < (img_area * 0.003) or area > (img_area * 0.25):
@@ -47,26 +42,14 @@ def detect_reference_card(pil_image):
         long_side, short_side = max(rw, rh), min(rw, rh)
         ratio = long_side / short_side
 
-        if abs(ratio - CARD_ASPECT) / CARD_ASPECT <= 0.35:
-            if best_card is None or area > best_card[1]:
-                best_card = (long_side, area)
+        if abs(ratio - CARD_ASPECT) / CARD_ASPECT <= 0.18 and area > best_area:
+            best_rect, best_area = rect, area
 
-    if best_card:
-        px_per_mm = best_card[0] / CARD_WIDTH_MM
-        return px_per_mm, True
-
-    return None, False
+    return best_rect
 
 
-def analyze_foot_contour(pil_image, px_per_mm=None, known_length_mm=None):
-    """Processes foot dimensions without raising AttributeError."""
-    if pil_image is None:
-        return {"width_mm": None, "length_mm": None, "shape": "Standard", "calibrated": False}
-
-    img_rgb = np.array(pil_image.convert("RGB"))
-    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB)
-
-    # Skin color threshold
+def _find_foot_contour(img_bgr):
+    """Returns the largest skin-toned contour, or None if no foot-like region is found."""
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     lower_skin = np.array([0, 20, 60])
     upper_skin = np.array([25, 255, 255])
@@ -76,11 +59,60 @@ def analyze_foot_contour(pil_image, px_per_mm=None, known_length_mm=None):
     skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_CLOSE, kernel)
 
     contours, _ = cv2.findContours(skin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
     if not contours:
+        return None
+    return max(contours, key=cv2.contourArea)
+
+
+def detect_reference_card(pil_image):
+    """
+    Returns (px_per_mm, card_found_boolean) safely so app.py unpacking never crashes.
+    """
+    if pil_image is None:
+        return None, False
+
+    img_rgb = np.array(pil_image.convert("RGB"))
+    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+
+    rect = _find_card_rect(img_bgr)
+    if rect is None:
+        return None, False
+
+    (rw, rh) = rect[1]
+    long_side = max(rw, rh)
+    px_per_mm = long_side / CARD_WIDTH_MM
+    return px_per_mm, True
+
+
+def annotate_detection(pil_image, px_per_mm=None, known_length_mm=None):
+    """Returns an RGB image with the reference card (green) and foot contour (blue) outlined."""
+    img_rgb = np.array(pil_image.convert("RGB"))
+    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+
+    card_rect = _find_card_rect(img_bgr)
+    if card_rect is not None:
+        box = cv2.boxPoints(card_rect).astype(int)
+        cv2.drawContours(img_bgr, [box], 0, (0, 255, 0), 3)
+
+    foot_c = _find_foot_contour(img_bgr)
+    if foot_c is not None:
+        cv2.drawContours(img_bgr, [foot_c], -1, (255, 0, 0), 3)
+
+    return cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+
+
+def analyze_foot_contour(pil_image, px_per_mm=None, known_length_mm=None):
+    """Processes foot dimensions without raising AttributeError."""
+    if pil_image is None:
         return {"width_mm": None, "length_mm": None, "shape": "Standard", "calibrated": False}
 
-    foot_c = max(contours, key=cv2.contourArea)
+    img_rgb = np.array(pil_image.convert("RGB"))
+    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+
+    foot_c = _find_foot_contour(img_bgr)
+    if foot_c is None:
+        return {"width_mm": None, "length_mm": None, "shape": "Standard", "calibrated": False}
+
     rect = cv2.minAreaRect(foot_c)
     (rw, rh) = rect[1]
     length_px, width_px = max(rw, rh), min(rw, rh)
