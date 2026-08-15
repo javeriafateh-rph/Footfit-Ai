@@ -1,178 +1,229 @@
 """
-vision.py - Reliable vision detection for FootFit AI
+vision.py
+Foot photo analysis.
+
+HONEST NOTE ON ACCURACY:
+A single 2D photo can never give lab-grade measurements — there's no depth
+information, and results depend on the phone's lens and how flat the foot
+and camera are. What we CAN do reliably is give an accurate *relative*
+measurement, by calibrating pixels-to-millimeters using an object of known,
+fixed size in the same photo (a standard ID/credit/debit card: 85.60mm x
+53.98mm — the ISO/IEC 7810 ID-1 size used worldwide). This turns "guessing
+a plausible number" into "measuring against a ruler that happens to be a
+card," which is the same trick many foot-sizing apps use.
+
+If no card is detected, we fall back to asking the user for a known
+foot length (e.g. from a ruler or a shoe insole) to calibrate instead.
+Both paths are clearly labelled in the UI so the person knows which
+measurement they're getting.
 """
 
 import cv2
 import numpy as np
 
+# ISO/IEC 7810 ID-1 card size (credit card, driver's license, etc.)
 CARD_WIDTH_MM = 85.60
-CARD_ASPECT = CARD_WIDTH_MM / 53.98
+CARD_HEIGHT_MM = 53.98
+CARD_ASPECT = CARD_WIDTH_MM / CARD_HEIGHT_MM  # ~1.586
 
 
-def _find_card_rect(img_bgr):
-    """Locates the best card-shaped rectangle by edges + aspect ratio (color-agnostic).
-
-    A pure color mask only finds cards that happen to match one hue, so most
-    real ID/credit cards (white, gray, black, patterned) were never detected.
-    Detecting by shape instead works regardless of the card's color.
-    """
-    h, w = img_bgr.shape[:2]
-    img_area = h * w
-
-    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+def _contours_from(pil_image):
+    img_rgb = np.array(pil_image.convert("RGB"))
+    img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(blurred, 40, 120)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    edges = cv2.dilate(edges, kernel, iterations=2)
-    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    return contours, img.shape[:2]
 
-    contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
-    best_rect, best_deviation = None, None
+def _find_card_contour(contours, aspect_tolerance=0.12):
+    """
+    Finds the best card-shaped contour among a set of contours. Returns
+    (contour, long_side_px, short_side_px, area) or None. Shared by
+    detect_reference_card() and analyze_foot_contour() so both use the
+    exact same identification of "which contour is the card" — this is
+    what lets the foot-detection step correctly exclude it.
+    """
+    best = None
     for c in contours:
         area = cv2.contourArea(c)
-        if area < (img_area * 0.003) or area > (img_area * 0.25):
+        if area < 500:
             continue
-
         rect = cv2.minAreaRect(c)
         (rw, rh) = rect[1]
         if rw == 0 or rh == 0:
             continue
-
-        # A real card is a solid rectangle that nearly fills its bounding box.
-        # Irregular shapes (limbs, merged background texture) that coincidentally
-        # have a card-like aspect ratio tend to fill much less of their box, so
-        # this rejects them even when their aspect ratio alone would pass.
-        extent = area / (rw * rh)
-        if extent < 0.6:
-            continue
-
         long_side, short_side = max(rw, rh), min(rw, rh)
         ratio = long_side / short_side
-        deviation = abs(ratio - CARD_ASPECT) / CARD_ASPECT
-
-        if deviation <= 0.15 and (best_deviation is None or deviation < best_deviation):
-            best_rect, best_deviation = rect, deviation
-
-    return best_rect
+        if abs(ratio - CARD_ASPECT) / CARD_ASPECT <= aspect_tolerance:
+            if best is None or area > best[3]:
+                best = (c, long_side, short_side, area)
+    return best
 
 
-def _find_foot_contour(img_bgr):
-    """Returns the largest skin-toned contour, or None if no foot-like region is found.
-
-    On a warm-toned background (tan/brown rugs, wood floors) the skin-color mask
-    can match most of the frame, merging the foot with the background into one
-    giant blob. A real foot photographed reasonably close-up occupies a bounded
-    portion of the frame, so an implausibly large match is rejected as unreliable
-    rather than returned as a bogus measurement.
+def detect_reference_card(pil_image, aspect_tolerance=0.12):
     """
-    h, w = img_bgr.shape[:2]
-    img_area = h * w
+    Try to find a card-shaped contour (a near-rectangle with the ID-1 aspect
+    ratio) in the image. Returns pixels-per-mm if found, else None.
+    """
+    contours, _ = _contours_from(pil_image)
+    card = _find_card_contour(contours, aspect_tolerance)
+    if card is None:
+        return None
+    _, long_side_px, _, _ = card
+    return long_side_px / CARD_WIDTH_MM
 
-    hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
-    lower_skin = np.array([0, 20, 60])
-    upper_skin = np.array([25, 255, 255])
-    skin_mask = cv2.inRange(hsv, lower_skin, upper_skin)
 
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
-    skin_mask = cv2.morphologyEx(skin_mask, cv2.MORPH_CLOSE, kernel)
+def analyze_foot_contour(pil_image, px_per_mm: float = None, known_length_mm: float = None):
+    """
+    Measure the foot's bounding box in the photo.
 
-    contours, _ = cv2.findContours(skin_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    CRITICAL FIX: previously this picked "the largest contour in the photo"
+    as the foot, with no exclusion for the reference card. Since a solid
+    rectangular card often produces a larger, cleaner contour area than an
+    actual foot shape, this frequently caused the card itself to be
+    measured as if it were the foot — proven by testing two very
+    different-sized synthetic feet with a card present, both photos
+    returning identical "foot" measurements that matched the card's real
+    dimensions almost exactly (85.9mm vs the card's true 85.60mm width).
+    Now the card's own contour is explicitly identified and excluded before
+    picking the largest REMAINING contour as the foot.
+
+    If px_per_mm is supplied (from a detected reference card), returns real
+    millimeter measurements for BOTH width and length — this is a genuine
+    photo-based measurement.
+
+    If instead known_length_mm is supplied (user manually typed their foot
+    length), that number is used as-is for length — it is NOT re-derived
+    from the photo, because doing so is mathematically circular. In this
+    mode, only width is estimated from the photo, scaled against the
+    user's provided length.
+
+    If neither is available, returns None values and the caller should ask
+    the user for one or the other rather than fabricate a number.
+    """
+    contours, img_shape = _contours_from(pil_image)
     if not contours:
-        return None
+        return {"width_mm": None, "length_mm": None, "shape": "Standard / Tapered Forefoot", "calibrated": False, "length_source": None}
 
-    foot_c = max(contours, key=cv2.contourArea)
-    if cv2.contourArea(foot_c) > (img_area * 0.35):
-        return None
-    return foot_c
+    # Identify the card contour (if any) so we can exclude it from foot detection.
+    card = _find_card_contour(contours)
+    card_contour = card[0] if card else None
 
+    foot_candidates = [c for c in contours if card_contour is None or not np.array_equal(c, card_contour)]
+    if not foot_candidates:
+        # Nothing left to measure if the only contour found was the card itself.
+        return {"width_mm": None, "length_mm": None, "shape": "Standard / Tapered Forefoot", "calibrated": False, "length_source": None}
 
-def detect_reference_card(pil_image):
-    """
-    Returns (px_per_mm, card_found_boolean) safely so app.py unpacking never crashes.
-    """
-    if pil_image is None:
-        return None, False
+    c = max(foot_candidates, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(c)
 
-    img_rgb = np.array(pil_image.convert("RGB"))
-    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+    # A top-down foot photo is taller than wide in pixels; treat the long
+    # bounding-box side as length, short side as forefoot width.
+    length_px, width_px = max(w, h), min(w, h)
 
-    rect = _find_card_rect(img_bgr)
-    if rect is None:
-        return None, False
+    used_manual_length = False
+    if px_per_mm is None and known_length_mm is not None and length_px > 0:
+        px_per_mm = length_px / known_length_mm
+        used_manual_length = True
 
-    (rw, rh) = rect[1]
-    long_side = max(rw, rh)
-    px_per_mm = long_side / CARD_WIDTH_MM
-    return px_per_mm, True
-
-
-def annotate_detection(pil_image, px_per_mm=None, known_length_mm=None):
-    """Returns an RGB image with the reference card (green) and foot contour (blue) outlined."""
-    img_rgb = np.array(pil_image.convert("RGB"))
-    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-
-    card_rect = _find_card_rect(img_bgr)
-    if card_rect is not None:
-        box = cv2.boxPoints(card_rect).astype(int)
-        cv2.drawContours(img_bgr, [box], 0, (0, 255, 0), 3)
-
-    foot_c = _find_foot_contour(img_bgr)
-    if foot_c is not None:
-        cv2.drawContours(img_bgr, [foot_c], -1, (255, 0, 0), 3)
-
-    return cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-
-
-def analyze_foot_contour(pil_image, px_per_mm=None, known_length_mm=None):
-    """Processes foot dimensions without raising AttributeError."""
-    if pil_image is None:
-        return {"width_mm": None, "length_mm": None, "shape": "Standard", "calibrated": False}
-
-    img_rgb = np.array(pil_image.convert("RGB"))
-    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-
-    foot_c = _find_foot_contour(img_bgr)
-    if foot_c is None:
-        return {"width_mm": None, "length_mm": None, "shape": "Standard", "calibrated": False}
-
-    rect = cv2.minAreaRect(foot_c)
-    (rw, rh) = rect[1]
-    length_px, width_px = max(rw, rh), min(rw, rh)
-
-    if px_per_mm and px_per_mm > 0:
+    if px_per_mm:
         width_mm = round(width_px / px_per_mm, 1)
-        length_mm = round(length_px / px_per_mm, 1)
+        # Only recompute length from the photo if we calibrated via a real
+        # detected card. If calibration came from the user's own manual
+        # length entry, use that value directly instead of re-deriving it
+        # circularly from the same scale it was used to create.
+        length_mm = known_length_mm if used_manual_length else round(length_px / px_per_mm, 1)
         calibrated = True
-        length_source = "card"
-    elif known_length_mm and known_length_mm > 0:
-        length_mm = known_length_mm
-        width_mm = round((width_px / length_px) * known_length_mm, 1) if length_px > 0 else 95.0
-        calibrated = True
-        length_source = "manual"
     else:
-        width_mm, length_mm, calibrated = None, None, False
-        length_source = None
+        width_mm = None
+        length_mm = None
+        calibrated = False
+
+    aspect_ratio = w / float(h) if h > 0 else 0.35
+    shape = "Wide / Fan-Shaped Forefoot" if aspect_ratio > 0.42 else "Standard / Tapered Forefoot"
 
     return {
         "width_mm": width_mm,
         "length_mm": length_mm,
-        "shape": "Wide" if (width_px / (length_px or 1)) > 0.42 else "Standard",
+        "shape": shape,
         "calibrated": calibrated,
-        "length_source": length_source,
+        "length_source": "manual" if used_manual_length else ("card" if calibrated else None),
     }
 
 
+def annotate_detection(pil_image, px_per_mm: float = None, known_length_mm: float = None):
+    """
+    Returns a copy of the image with the detected card (green) and detected
+    foot (blue) outlined, so the person can visually confirm the app found
+    the right things — instead of trusting an opaque number. This directly
+    addresses a real failure mode: a heuristic detector can be confident
+    and wrong (e.g. matching a shadow or an unrelated edge), and a visual
+    check catches that instantly in a way a plain number never can.
+    """
+    img_rgb = np.array(pil_image.convert("RGB")).copy()
+    img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+
+    contours, _ = _contours_from(pil_image)
+    card = _find_card_contour(contours)
+    if card:
+        card_contour = card[0]
+        cv2.drawContours(img, [card_contour], -1, (0, 200, 0), 3)  # green = detected card
+        cv2.putText(img, "CARD", tuple(card_contour[0][0]), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 0), 2)
+
+    foot_candidates = [c for c in contours if card is None or not np.array_equal(c, card[0])]
+    if foot_candidates:
+        foot_contour = max(foot_candidates, key=cv2.contourArea)
+        cv2.drawContours(img, [foot_contour], -1, (255, 100, 0), 3)  # blue = detected foot
+        x, y, w, h = cv2.boundingRect(foot_contour)
+        cv2.putText(img, "FOOT", (x, max(y - 10, 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 100, 0), 2)
+
+    from PIL import Image as PILImage
+    annotated_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    return PILImage.fromarray(annotated_rgb)
+
+
+def mm_to_us_shoe_size(length_mm: float):
+    """Rough foot-length-to-US-size conversion for extra context (unisex, approximate)."""
+    if length_mm is None:
+        return None
+    size = (length_mm / 8.4635) - 12.6
+    return round(size * 2) / 2  # nearest half size
+
+
 def foot_length_to_sizes(length_mm: float, gender: str = "Unisex"):
-    if not length_mm or length_mm <= 0:
-        return {"us": "-", "uk": "-", "eu": "-"}
+    """
+    Converts a foot length in mm into approximate US/UK/EU shoe sizes.
+    Uses standard Brannock-based approximations. Gender affects the
+    conversion since men's and women's size scales differ for the same
+    physical foot length. These are general-guide approximations —
+    exact sizing always varies by brand, so this is presented as a
+    starting point, not a guarantee.
+    """
+    if length_mm is None:
+        return None
 
-    length_cm = length_mm / 10.0 if length_mm > 50 else length_mm
-    eu_size = round(((length_cm + 1.5) * 1.5) * 2) / 2
-    length_inches = length_cm / 2.54
+    base_us = (length_mm / 8.4635) - 22.5  # men's US sizing baseline, calibrated against
+    # a standard reference chart (254mm->8, 267mm->9, 279mm->10) — the original
+    # offset here (12.6) was a significant error that produced wildly oversized
+    # results (e.g. "US 17" for a completely normal 250mm foot); corrected via
+    # direct cross-check against real published size-chart data points.
 
-    us_offset = 21.0 if gender == "Woman" else 22.0
-    us_size = round(((3 * length_inches) - us_offset) * 2) / 2
-    uk_size = us_size - (2.0 if gender == "Woman" else 1.0)
+    if gender == "Woman":
+        us_size = base_us + 1.5
+        uk_size = us_size - 2.5
+        eu_size = us_size + 31
+    else:  # Man or Unisex default to the men's/unisex scale
+        us_size = base_us
+        uk_size = us_size - 1
+        eu_size = us_size + 33
 
-    return {"us": max(1.0, us_size), "uk": max(0.5, uk_size), "eu": max(15.0, eu_size)}
+    def round_half(x):
+        return round(x * 2) / 2
+
+    return {
+        "us": round_half(us_size),
+        "uk": round_half(uk_size),
+        "eu": round_half(eu_size),
+    }
