@@ -257,7 +257,6 @@ else:
                 use_manual = st.checkbox("Use manual length instead of card detection")
 
                 img = Image.open(uploaded_file)
-                st.image(img, width=200)
 
                 if use_manual:
                     px_per_mm, known_len = None, manual_length_cm * 10
@@ -265,6 +264,9 @@ else:
                     px_per_mm, known_len = vision.detect_reference_card(img), None
 
                 result = vision.analyze_foot_contour(img, px_per_mm=px_per_mm, known_length_mm=known_len)
+
+                annotated = vision.annotate_detection(img, px_per_mm=px_per_mm, known_length_mm=known_len)
+                st.image(annotated, width=260, caption="🟢 Detected card · 🔵 Detected foot — check these look right")
 
                 if result["calibrated"]:
                     if result["length_source"] == "card":
