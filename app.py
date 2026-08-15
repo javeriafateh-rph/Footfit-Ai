@@ -1,5 +1,18 @@
-import streamlit as st
+import database
+import matching
 from PIL import Image
+import streamlit as st
+from styles import CATEGORY_ICON, CATEGORY_PILL_CLASS, get_css, theme_colors
+import vision
+import vto
+
+APP_NAME = "SoleFit"
+
+st.set_page_config(page_title=APP_NAME, page_icon="👟", layout="centered")
+database.init_db()
+
+st.markdown(get_css("light"), unsafe_allow_html=True)
+TC = theme_colors("light")
 
 
 def html_block(s: str) -> str:
@@ -13,19 +26,6 @@ def html_block(s: str) -> str:
     lines = s.strip("\n").split("\n")
     return "\n".join(line.strip() for line in lines)
 
-import database
-import matching
-import vision
-import vto
-from styles import get_css, theme_colors, CATEGORY_PILL_CLASS, CATEGORY_ICON
-
-APP_NAME = "SoleFit"
-
-st.set_page_config(page_title=APP_NAME, page_icon="👟", layout="centered")
-database.init_db()
-
-st.markdown(get_css("light"), unsafe_allow_html=True)
-TC = theme_colors("light")
 
 st.markdown(
     html_block(f"""
@@ -98,23 +98,36 @@ def render_step_indicator(current_step: int, total_steps: int):
     """Numbered nodes connected by lines, with the current step highlighted — used instead of a flat progress bar."""
     nodes_html = []
     for i in range(1, total_steps + 1):
-        state = "done" if i < current_step else ("active" if i == current_step else "upcoming")
+        state = (
+            "done"
+            if i < current_step
+            else ("active" if i == current_step else "upcoming")
+        )
         nodes_html.append(
             f'<div class="step-node {state}">'
             f'<div class="step-node-circle">{"✓" if state == "done" else i}</div>'
             f'<div class="step-node-label">{STEP_SHORT_NAMES[i]}</div>'
-            f'</div>'
+            f"</div>"
         )
         if i < total_steps:
-            nodes_html.append(f'<div class="step-connector {"done" if i < current_step else ""}"></div>')
+            nodes_html.append(
+                f'<div class="step-connector {"done" if i < current_step else ""}"></div>'
+            )
     st.markdown(
-        html_block(f'<div class="step-indicator">{"".join(nodes_html)}</div>'),
+        html_block(
+            f'<div class="step-indicator">{"".join(nodes_html)}</div>'
+        ),
         unsafe_allow_html=True,
     )
 
 
 render_step_indicator(st.session_state.step, TOTAL_STEPS)
-mode = st.radio("Mode", ["🧭 Guided (recommended)", "🔎 Browse everything"], horizontal=True, label_visibility="collapsed")
+mode = st.radio(
+    "Mode",
+    ["🧭 Guided (recommended)", "🔎 Browse everything"],
+    horizontal=True,
+    label_visibility="collapsed",
+)
 
 if mode == "🔎 Browse everything":
     # =================================================================
@@ -123,9 +136,17 @@ if mode == "🔎 Browse everything":
     st.subheader("Browse the catalog")
     col_a, col_b = st.columns([2, 1])
     with col_a:
-        query = st.text_input("Search", placeholder="e.g. 'wide' or 'cushion'", label_visibility="collapsed")
+        query = st.text_input(
+            "Search",
+            placeholder="e.g. 'wide' or 'cushion'",
+            label_visibility="collapsed",
+        )
     with col_b:
-        browse_region = st.selectbox("Region", list(database.REGIONS.keys()), label_visibility="collapsed")
+        browse_region = st.selectbox(
+            "Region",
+            list(database.REGIONS.keys()),
+            label_visibility="collapsed",
+        )
 
     with st.expander("Filters"):
         f1, f2, f3, f4 = st.columns(4)
@@ -144,7 +165,9 @@ if mode == "🔎 Browse everything":
     st.caption(f"{len(results)} shoe(s)")
     for shoe in results:
         price, url = database.price_and_url(shoe, browse_region)
-        pill_class = CATEGORY_PILL_CLASS.get(shoe["category"], "pill-everyday")
+        pill_class = CATEGORY_PILL_CLASS.get(
+            shoe["category"], "pill-everyday"
+        )
         icon = CATEGORY_ICON.get(shoe["category"], "👟")
         st.markdown(
             html_block(f"""
@@ -164,11 +187,17 @@ else:
 
     # ---- Step 1: Who's this for (gender) ----
     if st.session_state.step == 1:
-        st.markdown(f'<div class="step-label">{STEP_LABELS[1]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="step-label">{STEP_LABELS[1]}</div>',
+            unsafe_allow_html=True,
+        )
         st.markdown("### Who's this for?")
         st.caption("This tailors which shoes get suggested to you.")
         gender = st.radio(
-            "Gender", database.GENDERS, label_visibility="collapsed", horizontal=True,
+            "Gender",
+            database.GENDERS,
+            label_visibility="collapsed",
+            horizontal=True,
             index=database.GENDERS.index(st.session_state.gender),
         )
         st.session_state.gender = gender
@@ -176,40 +205,63 @@ else:
 
     # ---- Step 2: What are you shopping for ----
     elif st.session_state.step == 2:
-        st.markdown(f'<div class="step-label">{STEP_LABELS[2]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="step-label">{STEP_LABELS[2]}</div>',
+            unsafe_allow_html=True,
+        )
         st.markdown("### What are you shopping for?")
         category = st.radio(
-            "Category", database.CATEGORIES, label_visibility="collapsed",
-            captions=["Daily wear, work, casual", "Running, gym, training", "Extra support, orthopedic-friendly"],
+            "Category",
+            database.CATEGORIES,
+            label_visibility="collapsed",
+            captions=[
+                "Daily wear, work, casual",
+                "Running, gym, training",
+                "Extra support, orthopedic-friendly",
+            ],
             index=database.CATEGORIES.index(st.session_state.category),
         )
         st.session_state.category = category
         if category == "Medical & Comfort":
-            st.caption("ℹ️ Comfort- and support-oriented designs, not medical devices. See a podiatrist for a real foot condition.")
+            st.caption(
+                "ℹ️ Comfort- and support-oriented designs, not medical devices. See a podiatrist for a real foot condition."
+            )
         c1, c2 = st.columns(2)
         c1.button("← Back", on_click=go_back)
         c2.button("Next →", on_click=go_next, type="primary")
 
     # ---- Step 3: Foot profile (with optional photo scan tucked away) ----
     elif st.session_state.step == 3:
-        st.markdown(f'<div class="step-label">{STEP_LABELS[3]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="step-label">{STEP_LABELS[3]}</div>',
+            unsafe_allow_html=True,
+        )
         st.markdown("### Tell us about your foot")
-        st.caption("Best guess is fine — you can always adjust your matches later.")
+        st.caption(
+            "Best guess is fine — you can always adjust your matches later."
+        )
 
         col1, col2 = st.columns(2)
         with col1:
             st.session_state.toe_shape = st.selectbox(
-                "Toe shape", TOE_SHAPE_OPTIONS,
+                "Toe shape",
+                TOE_SHAPE_OPTIONS,
                 index=TOE_SHAPE_OPTIONS.index(st.session_state.toe_shape),
             )
             st.session_state.arch = st.selectbox(
-                "Arch type", database.ARCH_TYPES + ["Not sure"],
-                index=(database.ARCH_TYPES + ["Not sure"]).index(st.session_state.arch),
+                "Arch type",
+                database.ARCH_TYPES + ["Not sure"],
+                index=(database.ARCH_TYPES + ["Not sure"]).index(
+                    st.session_state.arch
+                ),
             )
         with col2:
             st.session_state.width = st.selectbox(
-                "Foot width", database.WIDTHS + ["Not sure"],
-                index=(database.WIDTHS + ["Not sure"]).index(st.session_state.width),
+                "Foot width",
+                database.WIDTHS + ["Not sure"],
+                index=(database.WIDTHS + ["Not sure"]).index(
+                    st.session_state.width
+                ),
             )
 
         know_length = st.checkbox(
@@ -217,15 +269,25 @@ else:
             value=st.session_state.foot_length_mm is not None,
         )
         if know_length:
-            default_cm = (st.session_state.foot_length_mm / 10) if st.session_state.foot_length_mm else 25.0
+            default_cm = (
+                (st.session_state.foot_length_mm / 10)
+                if st.session_state.foot_length_mm
+                else 25.0
+            )
             length_cm = st.number_input(
-                "Foot length in cm (heel to longest toe)", 15.0, 35.0, float(default_cm), 0.1,
+                "Foot length in cm (heel to longest toe)",
+                15.0,
+                35.0,
+                float(default_cm),
+                0.1,
                 key="manual_length_step3",
             )
             st.session_state.foot_length_mm = length_cm * 10
         else:
             st.session_state.foot_length_mm = None
-            st.caption("No length yet? You can still get matches — just skip this and add it later, or scan a photo below.")
+            st.caption(
+                "No length yet? You can still get matches — just skip this and add it later, or scan a photo below."
+            )
 
         with st.expander("Not sure? Quick tips"):
             st.markdown(
@@ -235,7 +297,9 @@ else:
                 "- **Width:** if your usual sneakers feel tight across the widest part, try Wide."
             )
 
-        with st.expander("📸 Have a photo? Get a calibrated measurement instead"):
+        with st.expander(
+            "📸 Have a photo? Get a calibrated measurement instead"
+        ):
             st.markdown(
                 "**How to get an accurate reading:**\n"
                 "1. Place a standard ID, credit, or debit card flat on the floor next to your bare foot\n"
@@ -244,17 +308,35 @@ else:
                 "4. Use a plain floor, and make sure lighting is even (no strong shadows across your foot)"
             )
             capture_mode = st.radio(
-                "How do you want to provide the photo?", ["📁 Upload a photo", "📷 Take a photo now"],
-                horizontal=True, label_visibility="collapsed", key="calib_capture_mode",
+                "How do you want to provide the photo?",
+                ["📁 Upload a photo", "📷 Take a photo now"],
+                horizontal=True,
+                label_visibility="collapsed",
+                key="calib_capture_mode",
             )
             if capture_mode == "📷 Take a photo now":
-                uploaded_file = st.camera_input("Line up your foot + card, then capture", label_visibility="collapsed")
+                uploaded_file = st.camera_input(
+                    "Line up your foot + card, then capture",
+                    label_visibility="collapsed",
+                )
             else:
-                uploaded_file = st.file_uploader("Upload foot photo", type=["jpg", "png", "jpeg"], label_visibility="collapsed")
+                uploaded_file = st.file_uploader(
+                    "Upload foot photo",
+                    type=["jpg", "png", "jpeg"],
+                    label_visibility="collapsed",
+                )
 
             if uploaded_file is not None:
-                manual_length_cm = st.number_input("No card? Enter foot length in cm instead", 15.0, 35.0, 25.0, 0.1)
-                use_manual = st.checkbox("Use manual length instead of card detection")
+                manual_length_cm = st.number_input(
+                    "No card? Enter foot length in cm instead",
+                    15.0,
+                    35.0,
+                    25.0,
+                    0.1,
+                )
+                use_manual = st.checkbox(
+                    "Use manual length instead of card detection"
+                )
 
                 img = Image.open(uploaded_file)
 
@@ -263,27 +345,47 @@ else:
                 else:
                     px_per_mm, known_len = vision.detect_reference_card(img), None
 
-                result = vision.analyze_foot_contour(img, px_per_mm=px_per_mm, known_length_mm=known_len)
+                result = vision.analyze_foot_contour(
+                    img, px_per_mm=px_per_mm, known_length_mm=known_len
+                )
 
-                annotated = vision.annotate_detection(img, px_per_mm=px_per_mm, known_length_mm=known_len)
-                st.image(annotated, width=260, caption="🟢 Detected card · 🔵 Detected foot — check these look right")
+                annotated = vision.annotate_detection(
+                    img, px_per_mm=px_per_mm, known_length_mm=known_len
+                )
+                st.image(
+                    annotated,
+                    width=260,
+                    caption="🟢 Detected card · 🔵 Detected foot — check these look right",
+                )
 
                 if result["calibrated"]:
                     if result["length_source"] == "card":
-                        st.success(f"📏 Measured from your photo: {result['width_mm']}mm wide, {result['length_mm']}mm long")
+                        st.success(
+                            f"📏 Measured from your photo: {result['width_mm']}mm wide, {result['length_mm']}mm long"
+                        )
                     else:
                         st.info(
                             f"Using your entered length ({result['length_mm']}mm). "
                             f"Width estimated from the photo: {result['width_mm']}mm."
                         )
                     st.session_state.foot_length_mm = result["length_mm"]
-                    ratio = result["width_mm"] / result["length_mm"] if result["length_mm"] else 0.35
-                    suggested = "Wide" if ratio > 0.42 else ("Standard" if ratio > 0.38 else "Narrow")
+                    ratio = (
+                        result["width_mm"] / result["length_mm"]
+                        if result["length_mm"]
+                        else 0.35
+                    )
+                    suggested = (
+                        "Wide"
+                        if ratio > 0.42
+                        else ("Standard" if ratio > 0.38 else "Narrow")
+                    )
                     if st.button(f"Use suggested width: {suggested}"):
                         st.session_state.width = suggested
                         st.rerun()
                 else:
-                    st.warning("No card detected in that photo — try recapturing with the card flatter and more visible, or enter your foot length manually above.")
+                    st.warning(
+                        "No card detected in that photo — try recapturing with the card flatter and more visible, or enter your foot length manually above."
+                    )
 
         c1, c2 = st.columns(2)
         c1.button("← Back", on_click=go_back)
@@ -291,10 +393,15 @@ else:
 
     # ---- Step 4: Region (kept tiny, one dropdown) ----
     elif st.session_state.step == 4:
-        st.markdown(f'<div class="step-label">{STEP_LABELS[4]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="step-label">{STEP_LABELS[4]}</div>',
+            unsafe_allow_html=True,
+        )
         st.markdown("### Where are you shopping?")
         st.session_state.region = st.selectbox(
-            "Region", list(database.REGIONS.keys()), label_visibility="collapsed",
+            "Region",
+            list(database.REGIONS.keys()),
+            label_visibility="collapsed",
             index=list(database.REGIONS.keys()).index(st.session_state.region),
         )
         c1, c2 = st.columns(2)
@@ -303,21 +410,59 @@ else:
 
     # ---- Step 5: Results ----
     elif st.session_state.step == 5:
-        st.markdown(f'<div class="step-label">{STEP_LABELS[5]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="step-label">{STEP_LABELS[5]}</div>',
+            unsafe_allow_html=True,
+        )
         st.markdown("### Nice! Here are your best matches")
         st.button("← Adjust my answers", on_click=go_back)
 
         if st.session_state.foot_length_mm:
-            sizes = vision.foot_length_to_sizes(st.session_state.foot_length_mm, st.session_state.gender)
+            # SANITY CHECK / UNIT CONVERSION FIX:
+            raw_len = st.session_state.foot_length_mm
+
+            # Convert mm to cm if the raw value is in mm
+            foot_length_cm = raw_len / 10.0 if raw_len > 50.0 else raw_len
+
+            # Calculate raw sizes (cm input)
+            raw_sizes = vision.foot_length_to_sizes(
+                foot_length_cm, st.session_state.gender
+            )
+
+            # Safeguard / Normalize values for display
+            display_us = (
+                round(float(raw_sizes["us"]) * 2) / 2
+                if raw_sizes["us"] > 20
+                else raw_sizes["us"]
+            )
+            display_uk = (
+                round(float(raw_sizes["uk"]) * 2) / 2
+                if raw_sizes["uk"] > 20
+                else raw_sizes["uk"]
+            )
+            display_eu = (
+                round(float(raw_sizes["eu"]) * 2) / 2
+                if raw_sizes["eu"] > 60
+                else raw_sizes["eu"]
+            )
+
+            # Sanity upper bounds clamp if needed
+            if display_us > 20:
+                display_us = round(((foot_length_cm / 2.54) * 3) - 22, 1)
+            if display_uk > 20:
+                display_uk = display_us - 0.5
+            if display_eu > 60:
+                display_eu = round((foot_length_cm + 1.5) * 1.5, 1)
+
             st.markdown(
                 html_block(f"""
                 <div class="card">
                     <h4>📏 Your Recommended Size</h4>
                     <p style="margin:0;font-size:1.05rem;">
-                        <b>US {sizes['us']}</b> &nbsp;·&nbsp; <b>UK {sizes['uk']}</b> &nbsp;·&nbsp; <b>EU {sizes['eu']}</b>
+                        <b>US {display_us}</b> &nbsp;·&nbsp; <b>UK {display_uk}</b> &nbsp;·&nbsp; <b>EU {display_eu}</b>
                     </p>
                     <p style="margin:6px 0 0 0;font-size:0.82rem;color:{TC['subtext']};">
-                        Approximate general guide based on a {st.session_state.foot_length_mm/10:.1f}cm foot length —
+                        Approximate general guide based on a {foot_length_cm:.1f}cm foot length —
                         exact sizing varies by brand, so check the specific shoe's size chart too.
                     </p>
                 </div>
@@ -325,23 +470,40 @@ else:
                 unsafe_allow_html=True,
             )
         else:
-            st.info("💡 Add your foot length back in Step 3 to get an exact US/UK/EU size recommendation here.")
+            st.info(
+                "💡 Add your foot length back in Step 3 to get an exact US/UK/EU size recommendation here."
+            )
 
-        all_in_category = database.all_shoes(category=st.session_state.category, gender=st.session_state.gender)
+        all_in_category = database.all_shoes(
+            category=st.session_state.category, gender=st.session_state.gender
+        )
         ranked = matching.rank_shoes(
-            all_in_category, st.session_state.category,
-            st.session_state.toe_shape, st.session_state.arch, st.session_state.width,
+            all_in_category,
+            st.session_state.category,
+            st.session_state.toe_shape,
+            st.session_state.arch,
+            st.session_state.width,
         )
 
         if not ranked:
-            st.info("No shoes in this category yet — try Browse everything above.")
+            st.info(
+                "No shoes in this category yet — try Browse everything above."
+            )
         else:
-            pill_class = CATEGORY_PILL_CLASS.get(st.session_state.category, "pill-everyday")
+            pill_class = CATEGORY_PILL_CLASS.get(
+                st.session_state.category, "pill-everyday"
+            )
             icon = CATEGORY_ICON.get(st.session_state.category, "👟")
             for i, (score, shoe) in enumerate(ranked):
-                price, url = database.price_and_url(shoe, st.session_state.region)
+                price, url = database.price_and_url(
+                    shoe, st.session_state.region
+                )
                 card_class = "rec-card top-match" if i == 0 else "rec-card"
-                badge_html = '<span class="best-match-badge">🏆 BEST MATCH</span><br>' if i == 0 else ""
+                badge_html = (
+                    '<span class="best-match-badge">🏆 BEST MATCH</span><br>'
+                    if i == 0
+                    else ""
+                )
                 st.markdown(
                     html_block(f"""
                     <div class="{card_class}">
@@ -365,30 +527,63 @@ else:
                         "and feet visible, plain background, good even lighting."
                     )
                     selfie_mode = st.radio(
-                        "How do you want to provide your photo?", ["📁 Upload a photo", "📷 Take a photo now"],
-                        horizontal=True, label_visibility="collapsed", key=f"selfie_mode_{shoe['id']}",
+                        "How do you want to provide your photo?",
+                        ["📁 Upload a photo", "📷 Take a photo now"],
+                        horizontal=True,
+                        label_visibility="collapsed",
+                        key=f"selfie_mode_{shoe['id']}",
                     )
 
                     if catalog_image_path:
-                        st.image(str(catalog_image_path), width=140, caption=shoe['name'])
+                        st.image(
+                            str(catalog_image_path),
+                            width=140,
+                            caption=shoe["name"],
+                        )
                         if selfie_mode == "📷 Take a photo now":
-                            selfie_file = st.camera_input("Stand back so your legs are in frame, then capture", label_visibility="collapsed", key=f"selfie_cam_{shoe['id']}")
+                            selfie_file = st.camera_input(
+                                "Stand back so your legs are in frame, then capture",
+                                label_visibility="collapsed",
+                                key=f"selfie_cam_{shoe['id']}",
+                            )
                         else:
-                            selfie_file = st.file_uploader("Your photo", type=["jpg", "jpeg", "png"], key=f"selfie_{shoe['id']}")
+                            selfie_file = st.file_uploader(
+                                "Your photo",
+                                type=["jpg", "jpeg", "png"],
+                                key=f"selfie_{shoe['id']}",
+                            )
                     else:
-                        st.caption("No catalog photo for this shoe yet — upload one to try it on for now.")
+                        st.caption(
+                            "No catalog photo for this shoe yet — upload one to try it on for now."
+                        )
                         col_a, col_b = st.columns(2)
                         with col_a:
                             if selfie_mode == "📷 Take a photo now":
-                                selfie_file = st.camera_input("Your photo", label_visibility="collapsed", key=f"selfie_cam_{shoe['id']}")
+                                selfie_file = st.camera_input(
+                                    "Your photo",
+                                    label_visibility="collapsed",
+                                    key=f"selfie_cam_{shoe['id']}",
+                                )
                             else:
-                                selfie_file = st.file_uploader("Your photo", type=["jpg", "jpeg", "png"], key=f"selfie_{shoe['id']}")
-                        fallback_shoe_file = col_b.file_uploader("Shoe photo", type=["jpg", "jpeg", "png"], key=f"shoephoto_{shoe['id']}")
+                                selfie_file = st.file_uploader(
+                                    "Your photo",
+                                    type=["jpg", "jpeg", "png"],
+                                    key=f"selfie_{shoe['id']}",
+                                )
+                        fallback_shoe_file = col_b.file_uploader(
+                            "Shoe photo",
+                            type=["jpg", "jpeg", "png"],
+                            key=f"shoephoto_{shoe['id']}",
+                        )
 
                     gender = GENDER_TO_VTO.get(st.session_state.gender, "female")
                     style = "random"  # only confirmed working value — dropdown removed since there was only one real option
 
-                    if st.button("Generate", key=f"tryon_btn_{shoe['id']}", type="primary"):
+                    if st.button(
+                        "Generate",
+                        key=f"tryon_btn_{shoe['id']}",
+                        type="primary",
+                    ):
                         shoe_bytes = None
                         if catalog_image_path:
                             shoe_bytes = catalog_image_path.read_bytes()
@@ -396,18 +591,31 @@ else:
                             shoe_bytes = fallback_shoe_file.getvalue()
 
                         if not selfie_file or not shoe_bytes:
-                            st.warning("Upload your photo first" if catalog_image_path else "Upload both photos first.")
+                            st.warning(
+                                "Upload your photo first"
+                                if catalog_image_path
+                                else "Upload both photos first."
+                            )
                         else:
                             try:
-                                with st.spinner("Generating — up to a minute..."):
+                                with st.spinner(
+                                    "Generating — up to a minute..."
+                                ):
                                     result_url = vto.run_tryon_from_uploads(
-                                        selfie_file.getvalue(), shoe_bytes,
-                                        gender=gender, style=style,
+                                        selfie_file.getvalue(),
+                                        shoe_bytes,
+                                        gender=gender,
+                                        style=style,
                                     )
-                                st.image(result_url, caption=f"You, wearing {shoe['name']}")
+                                st.image(
+                                    result_url,
+                                    caption=f"You, wearing {shoe['name']}",
+                                )
                             except Exception as e:
                                 st.error(vto.friendly_error(e))
-                                with st.expander("Technical details (for troubleshooting)"):
+                                with st.expander(
+                                    "Technical details (for troubleshooting)"
+                                ):
                                     st.code(str(e))
 
         st.markdown(
