@@ -357,10 +357,10 @@ else:
                     "Use manual length instead of card detection"
                 )
 
-                img = Image.open(uploaded_file)
+                img = Image.open(uploaded_file).convert("RGB")
 
                 if use_manual:
-                    px_per_mm, known_len = None, manual_length_cm * 10
+                    px_per_mm, known_len = None, float(manual_length_cm * 10)
                 else:
                     raw_px = vision.detect_reference_card(img)
                     px_per_mm = sanitize_px_per_mm(raw_px)
@@ -372,17 +372,20 @@ else:
 
                 clean_px_per_mm = sanitize_px_per_mm(px_per_mm)
 
-                annotated = vision.annotate_detection(
-                    img, px_per_mm=clean_px_per_mm, known_length_mm=known_len
-                )
-                st.image(
-                    annotated,
-                    width=260,
-                    caption="🟢 Reference Card · 🔵 Automated Foot Contour",
-                )
+                try:
+                    annotated = vision.annotate_detection(
+                        img, px_per_mm=clean_px_per_mm, known_length_mm=known_len
+                    )
+                    st.image(
+                        annotated,
+                        width=260,
+                        caption="🟢 Reference Card · 🔵 Automated Foot Contour",
+                    )
+                except Exception as ann_err:
+                    st.image(img, width=260, caption="Uploaded Foot Image")
 
-                if result["calibrated"]:
-                    if result["length_source"] == "card":
+                if result.get("calibrated", False):
+                    if result.get("length_source") == "card":
                         st.success(
                             f"📏 Measured via OpenCV: {result['width_mm']}mm wide, {result['length_mm']}mm long"
                         )
@@ -394,7 +397,7 @@ else:
                     st.session_state.foot_length_mm = result["length_mm"]
                     ratio = (
                         result["width_mm"] / result["length_mm"]
-                        if result["length_mm"]
+                        if result.get("length_mm")
                         else 0.35
                     )
                     suggested = (
@@ -441,7 +444,6 @@ else:
         st.button("← Adjust my answers", on_click=go_back)
 
         if st.session_state.foot_length_mm:
-            # Apply unit conversion normalization (mm to cm conversion check)
             foot_length_cm = normalize_length_to_cm(st.session_state.foot_length_mm)
 
             raw_sizes = vision.foot_length_to_sizes(
@@ -464,7 +466,6 @@ else:
                 else raw_sizes["eu"]
             )
 
-            # Clamp upper boundaries
             if display_us > 20:
                 display_us = round(((foot_length_cm / 2.54) * 3) - 22, 1)
             if display_uk > 20:
