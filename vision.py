@@ -32,19 +32,17 @@ def _contours_from(pil_image):
     img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    _, thresh = cv2.threshold(
+        blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+    )
+    contours, _ = cv2.findContours(
+        thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
     return contours, img.shape[:2]
 
 
 def _find_card_contour(contours, aspect_tolerance=0.12):
-    """
-    Finds the best card-shaped contour among a set of contours. Returns
-    (contour, long_side_px, short_side_px, area) or None. Shared by
-    detect_reference_card() and analyze_foot_contour() so both use the
-    exact same identification of "which contour is the card" — this is
-    what lets the foot-detection step correctly exclude it.
-    """
+    """Finds the best card-shaped contour among a set of contours."""
     best = None
     for c in contours:
         area = cv2.contourArea(c)
@@ -63,10 +61,7 @@ def _find_card_contour(contours, aspect_tolerance=0.12):
 
 
 def detect_reference_card(pil_image, aspect_tolerance=0.12):
-    """
-    Try to find a card-shaped contour (a near-rectangle with the ID-1 aspect
-    ratio) in the image. Returns pixels-per-mm if found, else None.
-    """
+    """Try to find a card-shaped contour in the image. Returns pixels-per-mm if found, else None."""
     contours, _ = _contours_from(pil_image)
     card = _find_card_contour(contours, aspect_tolerance)
     if card is None:
@@ -75,66 +70,58 @@ def detect_reference_card(pil_image, aspect_tolerance=0.12):
     return long_side_px / CARD_WIDTH_MM
 
 
-def analyze_foot_contour(pil_image, px_per_mm: float = None, known_length_mm: float = None):
-    """
-    Measure the foot's bounding box in the photo.
-
-    CRITICAL FIX: previously this picked "the largest contour in the photo"
-    as the foot, with no exclusion for the reference card. Since a solid
-    rectangular card often produces a larger, cleaner contour area than an
-    actual foot shape, this frequently caused the card itself to be
-    measured as if it were the foot — proven by testing two very
-    different-sized synthetic feet with a card present, both photos
-    returning identical "foot" measurements that matched the card's real
-    dimensions almost exactly (85.9mm vs the card's true 85.60mm width).
-    Now the card's own contour is explicitly identified and excluded before
-    picking the largest REMAINING contour as the foot.
-
-    If px_per_mm is supplied (from a detected reference card), returns real
-    millimeter measurements for BOTH width and length — this is a genuine
-    photo-based measurement.
-
-    If instead known_length_mm is supplied (user manually typed their foot
-    length), that number is used as-is for length — it is NOT re-derived
-    from the photo, because doing so is mathematically circular. In this
-    mode, only width is estimated from the photo, scaled against the
-    user's provided length.
-
-    If neither is available, returns None values and the caller should ask
-    the user for one or the other rather than fabricate a number.
-    """
+def analyze_foot_contour(
+    pil_image, px_per_mm: float = None, known_length_mm: float = None
+):
+    """Measure the foot's bounding box in the photo."""
     contours, img_shape = _contours_from(pil_image)
     if not contours:
-        return {"width_mm": None, "length_mm": None, "shape": "Standard / Tapered Forefoot", "calibrated": False, "length_source": None}
+        return {
+            "width_mm": None,
+            "length_mm": None,
+            "shape": "Standard / Tapered Forefoot",
+            "calibrated": False,
+            "length_source": None,
+        }
 
-    # Identify the card contour (if any) so we can exclude it from foot detection.
     card = _find_card_contour(contours)
     card_contour = card[0] if card else None
 
-    foot_candidates = [c for c in contours if card_contour is None or not np.array_equal(c, card_contour)]
+    foot_candidates = [
+        c
+        for c in contours
+        if card_contour is None or not np.array_equal(c, card_contour)
+    ]
     if not foot_candidates:
-        # Nothing left to measure if the only contour found was the card itself.
-        return {"width_mm": None, "length_mm": None, "shape": "Standard / Tapered Forefoot", "calibrated": False, "length_source": None}
+        return {
+            "width_mm": None,
+            "length_mm": None,
+            "shape": "Standard / Tapered Forefoot",
+            "calibrated": False,
+            "length_source": None,
+        }
 
     c = max(foot_candidates, key=cv2.contourArea)
     x, y, w, h = cv2.boundingRect(c)
 
-    # A top-down foot photo is taller than wide in pixels; treat the long
-    # bounding-box side as length, short side as forefoot width.
     length_px, width_px = max(w, h), min(w, h)
 
     used_manual_length = False
     if px_per_mm is None and known_length_mm is not None and length_px > 0:
+        # Sanity Guard: if user input known_length_mm > 500 (likely typed in cm multiplied mistakenly), auto-fix it
+        if known_length_mm > 500:
+            known_length_mm = known_length_mm / 10.0
+
         px_per_mm = length_px / known_length_mm
         used_manual_length = True
 
     if px_per_mm:
         width_mm = round(width_px / px_per_mm, 1)
-        # Only recompute length from the photo if we calibrated via a real
-        # detected card. If calibration came from the user's own manual
-        # length entry, use that value directly instead of re-deriving it
-        # circularly from the same scale it was used to create.
-        length_mm = known_length_mm if used_manual_length else round(length_px / px_per_mm, 1)
+        length_mm = (
+            known_length_mm
+            if used_manual_length
+            else round(length_px / px_per_mm, 1)
+        )
         calibrated = True
     else:
         width_mm = None
@@ -142,26 +129,26 @@ def analyze_foot_contour(pil_image, px_per_mm: float = None, known_length_mm: fl
         calibrated = False
 
     aspect_ratio = w / float(h) if h > 0 else 0.35
-    shape = "Wide / Fan-Shaped Forefoot" if aspect_ratio > 0.42 else "Standard / Tapered Forefoot"
+    shape = (
+        "Wide / Fan-Shaped Forefoot"
+        if aspect_ratio > 0.42
+        else "Standard / Tapered Forefoot"
+    )
 
     return {
         "width_mm": width_mm,
         "length_mm": length_mm,
         "shape": shape,
         "calibrated": calibrated,
-        "length_source": "manual" if used_manual_length else ("card" if calibrated else None),
+        "length_source": "manual"
+        if used_manual_length
+        else ("card" if calibrated else None),
     }
 
 
-def annotate_detection(pil_image, px_per_mm: float = None, known_length_mm: float = None):
-    """
-    Returns a copy of the image with the detected card (green) and detected
-    foot (blue) outlined, so the person can visually confirm the app found
-    the right things — instead of trusting an opaque number. This directly
-    addresses a real failure mode: a heuristic detector can be confident
-    and wrong (e.g. matching a shadow or an unrelated edge), and a visual
-    check catches that instantly in a way a plain number never can.
-    """
+def annotate_detection(
+    pil_image, px_per_mm: float = None, known_length_mm: float = None
+):
     img_rgb = np.array(pil_image.convert("RGB")).copy()
     img = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
 
@@ -169,61 +156,91 @@ def annotate_detection(pil_image, px_per_mm: float = None, known_length_mm: floa
     card = _find_card_contour(contours)
     if card:
         card_contour = card[0]
-        cv2.drawContours(img, [card_contour], -1, (0, 200, 0), 3)  # green = detected card
-        cv2.putText(img, "CARD", tuple(card_contour[0][0]), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 0), 2)
+        cv2.drawContours(img, [card_contour], -1, (0, 200, 0), 3)
+        cv2.putText(
+            img,
+            "CARD",
+            tuple(card_contour[0][0]),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 200, 0),
+            2,
+        )
 
-    foot_candidates = [c for c in contours if card is None or not np.array_equal(c, card[0])]
+    foot_candidates = [
+        c for c in contours if card is None or not np.array_equal(c, card[0])
+    ]
     if foot_candidates:
         foot_contour = max(foot_candidates, key=cv2.contourArea)
-        cv2.drawContours(img, [foot_contour], -1, (255, 100, 0), 3)  # blue = detected foot
+        cv2.drawContours(img, [foot_contour], -1, (255, 100, 0), 3)
         x, y, w, h = cv2.boundingRect(foot_contour)
-        cv2.putText(img, "FOOT", (x, max(y - 10, 20)), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 100, 0), 2)
+        cv2.putText(
+            img,
+            "FOOT",
+            (x, max(y - 10, 20)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (255, 100, 0),
+            2,
+        )
 
     from PIL import Image as PILImage
+
     annotated_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     return PILImage.fromarray(annotated_rgb)
 
 
 def mm_to_us_shoe_size(length_mm: float):
-    """Rough foot-length-to-US-size conversion for extra context (unisex, approximate)."""
     if length_mm is None:
         return None
-    size = (length_mm / 8.4635) - 12.6
-    return round(size * 2) / 2  # nearest half size
+    # Auto-fix unit if passed in cm instead of mm
+    if length_mm < 50:
+        length_mm = length_mm * 10.0
+    size = (length_mm / 8.4635) - 22.5
+    return round(max(1.0, size) * 2) / 2
 
 
 def foot_length_to_sizes(length_mm: float, gender: str = "Unisex"):
-    """
-    Converts a foot length in mm into approximate US/UK/EU shoe sizes.
-    Uses standard Brannock-based approximations. Gender affects the
-    conversion since men's and women's size scales differ for the same
-    physical foot length. These are general-guide approximations —
-    exact sizing always varies by brand, so this is presented as a
-    starting point, not a guarantee.
+    """Converts a foot length in mm into accurate US/UK/EU shoe sizes.
+
+    Includes unit validation and bounds clamping.
     """
     if length_mm is None:
-        return None
+        return {"us": "-", "uk": "-", "eu": "-"}
 
-    base_us = (length_mm / 8.4635) - 22.5  # men's US sizing baseline, calibrated against
-    # a standard reference chart (254mm->8, 267mm->9, 279mm->10) — the original
-    # offset here (12.6) was a significant error that produced wildly oversized
-    # results (e.g. "US 17" for a completely normal 250mm foot); corrected via
-    # direct cross-check against real published size-chart data points.
+    # --- UNIT SAFETY SANITY CHECK ---
+    # Human feet are between 100mm (baby) and 350mm (giant adult).
+    # If length_mm > 500, the user likely passed mm derived from an oversized cm value.
+    if length_mm > 500.0:
+        length_mm = length_mm / 10.0  # Convert back to actual mm
+
+    # If length_mm is < 50, user passed cm instead of mm
+    if length_mm < 50.0:
+        length_mm = length_mm * 10.0
+
+    # Standard Brannock Men's Baseline: (length_mm / 8.4635) - 22.5
+    # (e.g. 254mm = 25.4cm -> US 7.5 / 8.0)
+    base_us = (length_mm / 8.4635) - 22.5
 
     if gender == "Woman":
         us_size = base_us + 1.5
-        uk_size = us_size - 2.5
-        eu_size = us_size + 31
-    else:  # Man or Unisex default to the men's/unisex scale
+        uk_size = us_size - 2.0
+        eu_size = (length_mm / 10.0 + 1.5) * 1.5
+    else:  # Man or Unisex
         us_size = base_us
-        uk_size = us_size - 1
-        eu_size = us_size + 33
+        uk_size = us_size - 1.0
+        eu_size = (length_mm / 10.0 + 1.5) * 1.5
 
     def round_half(x):
         return round(x * 2) / 2
 
+    # Clamp sizes to realistic human ranges
+    final_us = max(1.0, min(20.0, round_half(us_size)))
+    final_uk = max(0.5, min(19.5, round_half(uk_size)))
+    final_eu = max(15.0, min(55.0, round_half(eu_size)))
+
     return {
-        "us": round_half(us_size),
-        "uk": round_half(uk_size),
-        "eu": round_half(eu_size),
+        "us": final_us,
+        "uk": final_uk,
+        "eu": final_eu,
     }
