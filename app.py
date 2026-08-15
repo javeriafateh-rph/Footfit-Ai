@@ -7,7 +7,7 @@ from styles import CATEGORY_ICON, CATEGORY_PILL_CLASS, get_css, theme_colors
 import vision
 import vto
 
-APP_NAME = "SoleFit"
+APP_NAME = "FootFit AI"
 
 st.set_page_config(page_title=APP_NAME, page_icon="👟", layout="centered")
 database.init_db()
@@ -370,8 +370,10 @@ else:
                     img, px_per_mm=px_per_mm, known_length_mm=known_len
                 )
 
+                clean_px_per_mm = sanitize_px_per_mm(px_per_mm)
+
                 annotated = vision.annotate_detection(
-                    img, px_per_mm=px_per_mm, known_length_mm=known_len
+                    img, px_per_mm=clean_px_per_mm, known_length_mm=known_len
                 )
                 st.image(
                     annotated,
